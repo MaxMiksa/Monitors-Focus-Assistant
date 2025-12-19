@@ -9,7 +9,9 @@
 Monitors Focus is a lightweight Windows tray app that auto-dims selected secondary monitors with a pure black, click-through overlay. It wakes the screen instantly when your cursor enters and darkens it again after a delay when you return to the primary display.
 
 <p align="center">
-  <img src="Presentation/demo.svg" width="720" alt="Monitors Focus demo"/>
+  <a href="https://github.com/MaxMiksa/Monitors-Focus-Assistant/releases/download/v1.0.0/MonitorsFocus.exe">
+    <img src="Presentation/demo.svg" width="820" alt="Monitors Focus demo"/>
+  </a>
 </p>
 
 ## Features
@@ -29,6 +31,12 @@ Monitors Focus is a lightweight Windows tray app that auto-dims selected seconda
 2. Run the app: left-click the tray icon (or right-click → Settings) to choose monitors, delay, opacity, hotkey, language, and dimming mode (Auto/Overlay-only/Hardware-only).
 3. Work on your primary screen; the selected secondary screens will black out after the delay and wake instantly when you move the cursor onto them. Hardware dimming lowers backlight on supported monitors; overlay remains the fallback.
 
+<p align="center">
+  <img src="Presentation/Pic.png" width="370" alt="Monitors Focus demo"/>
+  <img src="Presentation/Pic-zh.png" width="345" alt="Monitors Focus demo"/>
+</p>
+
+## Related Info
 <details>
   <summary>Requirements & Limits</summary>
 
