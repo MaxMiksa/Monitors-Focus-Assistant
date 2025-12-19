@@ -21,7 +21,8 @@
 | **Overlay safety** | Pure black, topmost, click-through, hidden from Alt-Tab/taskbar, non-activating. |
 | **Quick controls** | Tray menu plus global hotkey (Ctrl+F12 default) to pause/resume anytime. |
 | **Settings panel** | Configure delay, opacity, monitor selection, hotkey, autostart; DDC/CI noted as coming soon. |
-## v1.0.0 – Hardware Dimming & Localization / 硬件调光与本地化 (2025-12-17)
+
+## v1.0.0 – Hardware Dimming & Localization / 硬件调光与本地化 (2025-12-19)
 
 ## ✨ 硬件调光 + 本地化
 
