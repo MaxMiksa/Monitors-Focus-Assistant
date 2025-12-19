@@ -2,7 +2,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-green) ![Tech](https://img.shields.io/badge/.NET-8%20WinForms-512BD4) ![Status](https://img.shields.io/badge/status-v1.0.0-blue)
 
-✅ **Tray-first, no main window | Pause/Resume hotkey | Click-through black overlay**  
+✅ **Tray-first, no main window | Pause/Resume hotkey | Background RAM usage: ~10MB.**  
 ✅ **Instant wake when cursor enters secondary | Auto-dim after delay on primary**  
 ✅ **Windows 10/11 | Dual/tri monitor layouts | No window rearrange**  
 
