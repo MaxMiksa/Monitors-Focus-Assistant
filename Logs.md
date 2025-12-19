@@ -149,3 +149,68 @@
 ## Step 13 - Packaging script and gitignore update
 - 13.1 Added `pack.bat` to publish a win-x64 single-file self-contained build into `publish/win-x64`.
 - 13.2 Updated `.gitignore` to exclude `publish/` along with IDE/user artifacts.
+
+## Step 14 - Win11 test plan document
+- 14.1 Created `TESTING_WIN11.md` with step-by-step manual tests (core behavior, stability, edge cases) for Windows 11 multi-monitor setups.
+- 14.2 Added `TESTING_WIN11.md` to `.gitignore` per instruction to keep test notes local.
+
+## Step 15 - CODEX coordination doc
+- 15.1 Added `CODEX.md` as a persistent handoff document between WSL Codex (author) and Win11 Codex (tester), including responsibilities and project summary.
+- 15.2 Embedded the Win11 testing plan (replacing TESTING_WIN11.md) as the initial handoff record with detailed tasks, formatting rules, and user participation notes.
+- 15.3 Added `CODEX.md` to `.gitignore` to keep the coordination log local.
+
+## Step 16 - WSL build feasibility check
+- 16.1 Confirmed .NET SDK 8.0.122 is installed on WSL (Ubuntu 24.04), RID `ubuntu.24.04-x64`.
+- 16.2 Checked workloads: none installed; Windows Desktop targeting pack not present.
+
+## Step 17 - WSL build attempt
+- 17.1 Ran `dotnet build src/MonitorsFocus/MonitorsFocus.csproj -p:EnableWindowsTargeting=true`.
+- 17.2 Build failed: missing SDK `Microsoft.NET.Sdk.WindowsDesktop` (path `/usr/lib/dotnet/sdk/8.0.122/Sdks/Microsoft.NET.Sdk.WindowsDesktop/Sdk` not found); workload resolver returned null.
+- 17.3 Conclusion: On WSL/Linux, WindowsDesktop targeting pack is absent; WinForms build not available here.
+
+## Step 18 - Next steps for build/test
+- 18.1 WSL cannot build WinForms without the WindowsDesktop SDK (not available on Linux). Recommend building on Win11 or installing WindowsDesktop targeting pack on Windows.
+- 18.2 For local logic testing on WSL, option is to extract non-UI logic into a cross-platform library (e.g., settings/state machine) and test via a console app; current code references WinForms types (Keys, Forms), so refactor would be needed before WSL compilation.
+
+## Step 19 - Hardware dimming implementation and opacity fix
+- 19.1 Added DDC/CI hardware dimmer support (`src/MonitorsFocus/Brightness/HardwareDimmer.cs`) with per-monitor capability detection via `dxva2.dll` APIs; stores original brightness, dims to target level, and restores on unmask/exit.
+- 19.2 Extended `MonitorInfo`/`MonitorManager` to capture HMONITOR handles (via `MonitorFromPoint`) for DDC/CI operations.
+- 19.3 Integrated hardware dimming into state machine in `MainAppContext` (dim on mask, restore on unmask/pause/exit; refresh on monitor changes and settings apply).
+- 19.4 Updated settings model/UI: added hardware dimming toggle and level slider; enabled previously disabled DDC/CI control.
+- 19.5 Fixed 100% opacity issue by forcing layered opacity to 0.999 when user selects 100%, keeping the overlay visible and fully black.
+- 19.6 Updated `NativeMethods` with brightness and monitor handle interop; added checklist Phase 9 completion.
+
+## Step 20 - Hardware dimming enhancements per feedback
+- 20.1 Added WMI fallback (`WmiBrightnessController`) for cases where DDC/CI is unavailable; sessions now mark support/failure and track messages.
+- 20.2 Added per-monitor hardware dim disable list in settings and UI; capability statuses now surface in the Settings hardware diagnostics list.
+- 20.3 Hardware dim operations now run asynchronously with timeout marking; session disables on failure/timeout to avoid repeated attempts.
+- 20.4 Settings form shows diagnostics (Supported/Unsupported/Failed) and a “Rescan (applies on save)” helper; rescan occurs on settings save/monitor change.
+- 20.5 `AppSettings` persists hardware dim disabled IDs; `MainAppContext` refreshes dimmer with overrides; README feature tables already note optional hardware dimming.
+
+## Step 21 - Bug fix: SettingsForm null reference
+- 21.1 Fixed `ToggleHardwareControls` null reference by deferring the call until hardware controls are created and adding null guards.
+
+## Step 22 - UI/UX and logging improvements
+- 22.1 Added app-wide `LogSink` and Settings log panel for live diagnostics.
+- 22.2 Settings window now resizable, with increased control widths and minimum button sizes; added language selector (English/Chinese), dimming mode selector, hardware note text, and hardware diagnostics expansion.
+- 22.3 Added hardware dimming per-monitor disable list, rescan notice, and ability to choose modes (Auto/Overlay-only/Hardware-only).
+- 22.4 Ensured 100% opacity remains mapped to visible overlay; control sizing adjustments to avoid clipped buttons.
+
+## Step 23 - Post-record 6 fixes/updates
+- 23.1 Added window size persistence in settings (`LastWindowWidth/Height`) and set initial size larger (default 1200x900); Settings now resizable with remembered size.
+- 23.2 Added left-click tray action to open Settings.
+- 23.3 Expanded LogSink usage: more log lines for capability detection, hardware dim attempts/success/failure/timeout, settings apply.
+- 23.4 Strengthened hardware dim error handling: DDC/CI/WMI set now updates failure message and disables session on failure; capability detection logs status.
+- 23.5 Added bilingual UI support in Settings (language selector) and updated README feature lines.
+- 23.6 Known pending: language switch currently requires re-open (live refresh not yet implemented); hardware dim efficacy still to validate on target hardware; logs may need further expansion per user feedback.
+
+## Step 24 - Record 6/7 fixes (in progress, not yet Win11-verified)
+- 24.1 Increased default Settings size to 1400x1000 and persisted last window size; ensured min size 900x700.
+- 24.2 Added live language switch support with translations for labels/buttons/columns/hardware notes; language selection updates immediately without reopening.
+- 24.3 Introduced localization helpers and option wrappers for language and dimming mode combos; mode texts localized.
+- 24.4 Expanded logging: capability detection, skip reasons (paused/mode/disabled), pending mask timers, dim attempts, timeouts/failures, per-monitor capability summaries.
+- 24.5 Added more defensive logging in HardwareDimmer (DDC/CI and WMI detection, set/restore failures) and state machine skip logs.
+- 24.6 Retained left-click tray open; needs Win11 confirmation.
+
+## Step 25 - Licensing
+- 25.1 Added `LICENSE` with MIT terms.

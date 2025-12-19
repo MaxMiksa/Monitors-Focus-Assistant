@@ -1,6 +1,6 @@
 # Monitors Focus | [中文](README-zh.md)
 
-![License](https://img.shields.io/badge/license-TBD-lightgrey) ![Tech](https://img.shields.io/badge/.NET-8%20WinForms-512BD4) ![Status](https://img.shields.io/badge/status-v0.1.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green) ![Tech](https://img.shields.io/badge/.NET-8%20WinForms-512BD4) ![Status](https://img.shields.io/badge/status-v1.0.0-blue)
 
 ✅ **Tray-first, no main window | Pause/Resume hotkey | Click-through black overlay**  
 ✅ **Instant wake when cursor enters secondary | Auto-dim after delay on primary**  
@@ -18,20 +18,23 @@ Monitors Focus is a lightweight Windows tray app that auto-dims selected seconda
 | :--- | :--- |
 | ✨ Mouse-follow dimming | Tracks cursor and auto-masks selected non-primary monitors after a configurable delay (default 180s). |
 | 🛡️ Click-through overlay | Pure black, topmost, non-activating, hidden from Alt-Tab/taskbar; does not steal clicks. |
-| ⚙️ Quick settings | Tray settings for delay, opacity, monitor selection, global hotkey (Ctrl+F12 default), launch on startup. |
-| 🎛️ Pause anytime | Global hotkey or tray menu instantly pauses/resumes automation. |
+| ⚙️ Quick settings | Tray settings for delay, opacity, monitor selection, global hotkey (Ctrl+F12 default), launch on startup, bilingual UI (live switch). |
+| 🎛️ Pause anytime | Global hotkey or tray menu instantly pauses/resumes automation; left-click tray opens Settings. |
+| 💡 Hardware dimming (optional) | DDC/CI with WMI fallback on supported monitors; auto-falls back to overlay if unsupported. |
+| 🧪 Diagnostics | Per-monitor hardware dim status, manual disable list, and rescan (applies on save). |
+| 🪟 Flexible UI | Larger resizable Settings window with size memory; controls widened for clarity. |
 
 ## Usage
 1. Build or download `MonitorsFocus.exe` (see Developer Guide below for build).
-2. Run the app: find the tray icon, open **Settings** to choose monitors, delay, opacity, and hotkey.
-3. Work on your primary screen; the selected secondary screens will black out after the delay and wake instantly when you move the cursor onto them.
+2. Run the app: left-click the tray icon (or right-click → Settings) to choose monitors, delay, opacity, hotkey, language, and dimming mode (Auto/Overlay-only/Hardware-only).
+3. Work on your primary screen; the selected secondary screens will black out after the delay and wake instantly when you move the cursor onto them. Hardware dimming lowers backlight on supported monitors; overlay remains the fallback.
 
 <details>
   <summary>Requirements & Limits</summary>
 
-  - Windows 10/11 (x64), .NET 8 desktop runtime if not self-contained.
+  - Windows 10/11 (x64); self-contained publish includes runtime.
   - Designed for 2+ monitors; works with PerMonitorV2 DPI scaling.
-  - DDC/CI hardware dimming is not included in v0.1.0 (overlay-only).
+  - Hardware dimming depends on monitor support (DDC/CI external displays; WMI for many laptops); otherwise overlay is used.
 </details>
 
 <details>
@@ -42,7 +45,10 @@ Monitors Focus is a lightweight Windows tray app that auto-dims selected seconda
   dotnet build
   dotnet run --project src/MonitorsFocus
   # Single-file publish
-  dotnet publish src/MonitorsFocus -c Release -r win-x64 -p:PublishSingleFile=true -p:SelfContained=true
+  dotnet publish src/MonitorsFocus -c Release -r win-x64 ^
+    -p:PublishSingleFile=true -p:UseAppHost=true -p:SelfContained=true ^
+    -p:IncludeNativeLibrariesForSelfExtract=true -p:PublishTrimmed=false ^
+    -o publish/win-x64
   ```
 </details>
 
@@ -57,7 +63,7 @@ Monitors Focus is a lightweight Windows tray app that auto-dims selected seconda
 <details>
   <summary>License</summary>
 
-  License: TBD.
+  License: MIT.
 </details>
 
 <details>

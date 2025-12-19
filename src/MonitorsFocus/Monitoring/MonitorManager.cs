@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using MonitorsFocus;
 
 namespace MonitorsFocus.Monitoring;
 
@@ -25,7 +26,11 @@ internal sealed class MonitorManager : IDisposable
         _monitors.Clear();
         foreach (var screen in Screen.AllScreens)
         {
-            _monitors.Add(new MonitorInfo(screen));
+            var center = new Point(
+                screen.Bounds.Left + screen.Bounds.Width / 2,
+                screen.Bounds.Top + screen.Bounds.Height / 2);
+            var hMonitor = NativeMethods.MonitorFromPoint(center, NativeMethods.MONITOR_DEFAULTTONEAREST);
+            _monitors.Add(new MonitorInfo(screen, hMonitor));
         }
     }
 

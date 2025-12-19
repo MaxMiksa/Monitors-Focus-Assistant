@@ -6,6 +6,8 @@ obj/
 *.user
 *.suo
 publish/
+TESTING_WIN11.md
+CODEX.md
 
 # Archives and internal docs
 Archive/
@@ -15,3 +17,5 @@ AGENT.md
 PRD.md
 DEV.md
 RELEASE_NOTE.md
+CODEX.md
+logs.md

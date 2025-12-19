@@ -41,7 +41,8 @@ internal sealed class OverlayForm : Form
     public void ApplyOpacity(int opacityPercent)
     {
         var clamped = Math.Clamp(opacityPercent, 0, 100);
-        Opacity = clamped / 100.0;
+        var value = clamped >= 100 ? 0.999 : clamped / 100.0;
+        Opacity = value;
     }
 
     public void ShowOverlay()

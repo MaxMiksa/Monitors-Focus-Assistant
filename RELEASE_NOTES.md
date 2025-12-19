@@ -21,3 +21,24 @@
 | **Overlay safety** | Pure black, topmost, click-through, hidden from Alt-Tab/taskbar, non-activating. |
 | **Quick controls** | Tray menu plus global hotkey (Ctrl+F12 default) to pause/resume anytime. |
 | **Settings panel** | Configure delay, opacity, monitor selection, hotkey, autostart; DDC/CI noted as coming soon. |
+## v1.0.0 – Hardware Dimming & Localization / 硬件调光与本地化 (2025-12-17)
+
+## ✨ 硬件调光 + 本地化
+
+**支持显示器的背光可直接调低，界面支持中英切换并更易用。**
+
+| 类别 | 详细内容 |
+| :--- | :--- |
+| **硬件调光** | DDC/CI 调光（失败回退 WMI），诊断视图与单屏禁用，遮罩兜底。 |
+| **界面升级** | 设置窗口更大且记忆尺寸；实时中英切换；控件加宽、按钮不再被截断。 |
+| **日志增强** | 记录调光成功/失败/超时、能力状态、设置应用，方便排查。 |
+
+## ✨ Hardware dimming & localized UI
+
+**Backlight dimming on supported monitors, localized UI, and richer diagnostics.**
+
+| Category | Details |
+| :--- | :--- |
+| **Hardware dimming** | DDC/CI with WMI fallback, per-monitor diagnostics/disable, overlay fallback. |
+| **UI upgrades** | Larger settings window with size memory; live English/Chinese toggle; wider controls. |
+| **Logs** | More events for dim attempts/failures/timeouts and settings apply for easier troubleshooting. |

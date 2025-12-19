@@ -24,6 +24,8 @@ internal static class NativeMethods
     internal const uint MOD_WIN = 0x0008;
     internal const uint MOD_NOREPEAT = 0x4000;
 
+    internal const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern bool SetWindowPos(
         IntPtr hWnd,
@@ -45,4 +47,46 @@ internal static class NativeMethods
     internal static extern bool UnregisterHotKey(
         IntPtr hWnd,
         int id);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr MonitorFromPoint(POINT pt, uint flags);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    internal static extern bool GetNumberOfPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, out uint pdwNumberOfPhysicalMonitors);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    internal static extern bool GetPhysicalMonitorsFromHMONITOR(IntPtr hMonitor, uint dwPhysicalMonitorArraySize, [Out] PHYSICAL_MONITOR[] physicalMonitorArray);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    internal static extern bool DestroyPhysicalMonitors(uint dwPhysicalMonitorArraySize, PHYSICAL_MONITOR[] physicalMonitorArray);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    internal static extern bool GetMonitorBrightness(IntPtr hMonitor, out uint pdwMinimumBrightness, out uint pdwCurrentBrightness, out uint pdwMaximumBrightness);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    internal static extern bool SetMonitorBrightness(IntPtr hMonitor, uint dwNewBrightness);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct PHYSICAL_MONITOR
+    {
+        public IntPtr hPhysicalMonitor;
+
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string szPhysicalMonitorDescription;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct POINT
+    {
+        public int X;
+        public int Y;
+
+        public POINT(int x, int y)
+        {
+            X = x;
+            Y = y;
+        }
+
+        public static implicit operator POINT(System.Drawing.Point p) => new POINT(p.X, p.Y);
+    }
 }
