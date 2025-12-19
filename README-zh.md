@@ -2,7 +2,7 @@
 
 ![License](https://img.shields.io/badge/license-MIT-green) ![Tech](https://img.shields.io/badge/.NET-8%20WinForms-512BD4) ![Status](https://img.shields.io/badge/status-v1.0.0-blue)
 
-✅ **托盘常驻 | 全局暂停/恢复热键 | 后台仅占10MB运行内存  
+✅ **托盘常驻 | 全局暂停/恢复热键 | 后台仅占30MB运行内存  
 ✅ **光标进入副屏即刻亮屏 | 返回主屏延迟熄屏（默认 180 秒，可自定义）**  
 ✅ **Windows 10/11 | 双/三屏布局 | 不改变窗口位置**  
 
