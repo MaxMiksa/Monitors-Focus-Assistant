@@ -9,6 +9,9 @@ publish/
 TESTING_WIN11.md
 CODEX.md
 
+# Local-only workspace docs (never commit)
+Files/
+
 # Archives and internal docs
 Archive/
 AI_RELEASE_RULES.md
