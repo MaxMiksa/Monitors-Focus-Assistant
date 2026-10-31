@@ -1,0 +1,32 @@
+# 项目协作规则
+
+## 当前状态
+
+- 已发布基线为 v1.0.0 WinForms；当前工作区已迁移 .NET 10，正在开发显示器控制中心，尚未发布。
+- 前端已确定为 TypeScript + React + Tailwind CSS + shadcn/ui + Motion + Lucide；C# WebView2 宿主按需打开，关闭后释放。已停止 WinUI 3 路线，不引入 Tauri/Rust。
+- `src/MonitorsFocus` 是常驻核心和兼容旧版入口，`--center --background` 启动新核心；`src/MonitorsFocus.Core` 为协议与纯计算；`src/MonitorsFocus.Web` 为界面；`src/MonitorsFocus.WebHost` 为桌面宿主。没有 Web 后端或生产 HTTP 服务。
+- 功能范围：双屏亮度、保持比例的绑定、每日计划与渐变、场景、专注和登录自启。仅硬件色温，内屏暂不调色；不实施软件 Gamma。
+- 硬件读取、构建与假设备恢复检查已有验证；硬件写入恢复、休眠重连、长时间资源和完整交互仍需验收，不把编译通过等同于完成。
+
+## 开发约定
+
+- 用户已选 A「随手调节」。沿用 `docs/design/` 规范与还原清单。全部无衬线，只用14/16/24三档字号；颜色、空间、圆角参数集中在 Web 的 `src/index.css`，矩形采用连续超椭圆角。
+- shadcn组件在项目内维护，避免引入默认模板视觉。Motion尊重减少动态效果；Lucide统一图标。
+- 设备句柄只由C#核心持有；WebView桥只开放明确命令，验证来源，不暴露通用Shell/文件系统执行能力。前端不直接调用硬件。
+- 登录自启只保留一条 `MonitorsFocus` 条目，统一指向 `--center --background` 的自包含包 `publish/app/core`；不把 `bin/Release` 的框架依赖输出设为自启。
+- 设备命令串行，等待超时不代表底层调用取消；释放句柄前必须等在途操作结束。UI错误不能假装硬件成功。
+- 配置保存检查Revision，冲突保留草稿；不覆盖其他操作的新设置。
+- 自动维护本文件、双语README、docs/INDEX.md和相关设计文档；描述当前真实行为，规划单独标记。
+- 构建入口为 `scripts/build.ps1`；生产包先构建Web，再构建C#，不依赖Vite/Node常驻。
+- `Files/` 是历史本地资料，不驱动流程。不自动提交、推送、发布。阶段完成后清理本轮临时文件，保留用户数据与构建缓存。
+
+## 验证与运行
+
+```powershell
+./scripts/build.ps1
+npm --prefix src/MonitorsFocus.Web run lint
+dotnet run --project tests/MonitorsFocus.Tests -c Release --no-build
+./src/MonitorsFocus.WebHost/bin/Release/net10.0-windows/MonitorsFocus.WebHost.exe
+```
+
+使用global.json指定的.NET 10 SDK。本机SDK在 `D:\Apps\dotnet`，可传 `-Dotnet D:\Apps\dotnet\dotnet.exe`；框架依赖开发运行还需将 `DOTNET_ROOT` 和 `DOTNET_ROOT_X64` 指向该目录。开发与打包细节见 `docs/development.md`。

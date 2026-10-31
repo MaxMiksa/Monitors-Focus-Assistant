@@ -6,11 +6,15 @@ obj/
 *.user
 *.suo
 publish/
+node_modules/
+dist/
+.playwright-mcp/
 TESTING_WIN11.md
 CODEX.md
 
 # Local-only workspace docs (never commit)
 Files/
+.workbuddy/
 
 # Archives and internal docs
 Archive/

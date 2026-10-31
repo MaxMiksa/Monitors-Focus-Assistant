@@ -1,0 +1,167 @@
+using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
+using MonitorsFocus;
+using MonitorsFocus.Brightness;
+using MonitorsFocus.Monitoring;
+
+if (args.Contains("--probe"))
+{
+    using var manager = new MonitorManager();
+    foreach (var monitor in manager.Monitors)
+    {
+        var identity = DisplayIdentity.FindInstance(monitor.Id);
+        Console.WriteLine($"Display={monitor.Id}; Primary={monitor.IsPrimary}; IdentityMapped={identity != null}");
+        using var ddc = DdcBrightnessDevice.Open(monitor);
+        using var wmi = WmiBrightnessController.Open(identity);
+        Console.WriteLine($"  DDC brightness={ddc?.ReadBrightness().ToString() ?? "unavailable"}; Matched WMI brightness={wmi?.ReadBrightness().ToString() ?? "unavailable"}");
+        if (!NativeMethods.GetNumberOfPhysicalMonitorsFromHMONITOR(monitor.Handle, out var count) || count != 1) continue;
+        var handles = new NativeMethods.PHYSICAL_MONITOR[count];
+        if (!NativeMethods.GetPhysicalMonitorsFromHMONITOR(monitor.Handle, count, handles)) continue;
+        try
+        {
+            var handle = handles[0].hPhysicalMonitor;
+            var capsOk = NativeMethods.GetMonitorCapabilities(handle, out var caps, out var temperatures);
+            var tempOk = NativeMethods.GetMonitorColorTemperature(handle, out var temperature);
+            Console.WriteLine($"  CapabilitiesRead={capsOk}; Flags=0x{caps:X}; TemperatureModes=0x{temperatures:X}; CurrentTemperatureMode={(tempOk ? temperature : null)}");
+            for (uint channel = 0; channel < 3; channel++)
+            {
+                var gainOk = NativeMethods.GetMonitorRedGreenOrBlueGain(handle, channel, out var min, out var current, out var max);
+                Console.WriteLine($"  RGB[{channel}] readable={gainOk}; range={min}..{max}; current={current}");
+            }
+        }
+        finally { NativeMethods.DestroyPhysicalMonitors(count, handles); }
+    }
+    Console.WriteLine("Read-only probe completed; no brightness or color writes performed.");
+    return;
+}
+
+var tests = new (string Name, Func<Task> Run)[]
+{
+    ("Native buffer layout matches Windows", () =>
+    {
+        Equal(IntPtr.Size == 8 ? 264 : 260, Marshal.SizeOf<NativeMethods.PHYSICAL_MONITOR>());
+        Equal(IntPtr.Size, Marshal.OffsetOf<NativeMethods.PHYSICAL_MONITOR>("szPhysicalMonitorDescription").ToInt32());
+        Equal(840, Marshal.SizeOf<NativeMethods.DISPLAY_DEVICE>());
+        return Task.CompletedTask;
+    }),
+    ("WMI matching cannot select another monitor", () =>
+    {
+        var identity = DisplayIdentity.FromInterfacePath(@"\\?\DISPLAY#BOE1234#5&ABC&0&UID1#{guid}");
+        Equal(@"DISPLAY\BOE1234\5&ABC&0&UID1", identity!);
+        Check(DisplayIdentity.MatchesWmi(identity!, identity + "_0"));
+        Check(!DisplayIdentity.MatchesWmi(identity!, identity + "2_0"));
+        Check(!DisplayIdentity.MatchesWmi(identity!, @"DISPLAY\AOC1234\5&ABC&0&UID1_0"));
+        Check(DisplayIdentity.FromInterfacePath("unknown") == null);
+        return Task.CompletedTask;
+    }),
+    ("Closing untouched device never changes brightness", async () =>
+    {
+        var device = new FakeDevice();
+        var session = new BrightnessSession(device, _ => { });
+        await session.CloseAsync();
+        Equal(0, device.Writes.Count);
+        Check(device.Disposed);
+    }),
+    ("Restore uses each focus cycle's actual baseline", async () =>
+    {
+        var device = new FakeDevice();
+        var session = new BrightnessSession(device, _ => { });
+        await session.DimAsync(10);
+        await session.RestoreAsync();
+        Equal(60, device.Brightness);
+        device.Brightness = 35;
+        await session.DimAsync(5);
+        await session.RestoreAsync();
+        Equal(35, device.Brightness);
+        await session.CloseAsync();
+        Equal("10,60,5,35", string.Join(',', device.Writes));
+    }),
+    ("Restore cannot overtake a delayed dim", async () =>
+    {
+        var device = new FakeDevice { BlockFirstWrite = true };
+        var session = new BrightnessSession(device, _ => { }, 3000);
+        var dim = session.DimAsync(10);
+        await device.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        _ = session.DimAsync(20);
+        var restore = session.RestoreAsync();
+        Check(!restore.IsCompleted);
+        device.Release.Set();
+        await Task.WhenAll(dim, restore);
+        Equal("10,60", string.Join(',', device.Writes));
+        await session.CloseAsync();
+    }),
+    ("Timeout restores late writes before disposing", async () =>
+    {
+        var device = new FakeDevice { BlockFirstWrite = true };
+        var timedOut = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var session = new BrightnessSession(device, error => { if (error != null) timedOut.TrySetResult(); }, 30);
+        _ = session.DimAsync(10);
+        await device.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await timedOut.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Check(!session.CanDim);
+        var close = session.CloseAsync();
+        Check(!close.IsCompleted && !device.Disposed);
+        device.Release.Set();
+        await close;
+        Equal("10,60", string.Join(',', device.Writes));
+        Check(device.Disposed);
+        await session.DimAsync(5);
+        Equal(2, device.Writes.Count);
+    }),
+    ("Restore failure is reported while handles are released", async () =>
+    {
+        var device = new FakeDevice { FailRestore = true };
+        var session = new BrightnessSession(device, _ => { });
+        await session.DimAsync(10);
+        try { await session.CloseAsync(); throw new Exception("Expected restore error."); }
+        catch (InvalidOperationException) { }
+        Check(device.Disposed);
+    })
+};
+
+foreach (var test in tests)
+{
+    await test.Run().WaitAsync(TimeSpan.FromSeconds(8));
+    Console.WriteLine($"PASS {test.Name}");
+}
+Console.WriteLine($"{tests.Length} checks passed; no real monitor writes performed.");
+
+static void Check(bool value) { if (!value) throw new Exception("Assertion failed."); }
+static void Equal<T>(T expected, T actual)
+{
+    if (!EqualityComparer<T>.Default.Equals(expected, actual))
+        throw new Exception($"Expected {expected}, got {actual}.");
+}
+
+sealed class FakeDevice : IBrightnessDevice
+{
+    public int Brightness = 60;
+    public bool BlockFirstWrite;
+    public bool FailRestore;
+    public bool Disposed;
+    public readonly ConcurrentQueue<int> Writes = new();
+    public readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    public readonly ManualResetEventSlim Release = new();
+
+    public int ReadBrightness()
+    {
+        if (Disposed) throw new Exception("Read after disposal.");
+        return Brightness;
+    }
+
+    public void SetBrightness(int value)
+    {
+        if (Disposed) throw new Exception("Write after disposal.");
+        if (BlockFirstWrite && Writes.IsEmpty)
+        {
+            Entered.TrySetResult();
+            if (!Release.Wait(TimeSpan.FromSeconds(4))) throw new TimeoutException("Test did not release fake device.");
+        }
+        if (Disposed) throw new Exception("Disposed during native write.");
+        if (FailRestore && value == 60) throw new InvalidOperationException("Restore rejected.");
+        Writes.Enqueue(value);
+        Brightness = value;
+    }
+
+    public void Dispose() { Disposed = true; Release.Dispose(); }
+}

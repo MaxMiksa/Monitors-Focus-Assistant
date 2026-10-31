@@ -1,56 +1,73 @@
-using System;
 using System.Management;
+using MonitorsFocus.Monitoring;
 
 namespace MonitorsFocus.Brightness;
 
-internal static class WmiBrightnessController
+internal sealed class WmiBrightnessController : IBrightnessDevice
 {
-    public static bool TryGetBrightness(out byte current, out byte max)
-    {
-        current = 0;
-        max = 0;
-        try
-        {
-            using var searcher = new ManagementObjectSearcher("root\\wmi", "SELECT * FROM WmiMonitorBrightness");
-            foreach (ManagementObject o in searcher.Get())
-            {
-                current = (byte)o.GetPropertyValue("CurrentBrightness");
-                var levels = (byte[])o.GetPropertyValue("Level");
-                if (levels is { Length: > 0 })
-                {
-                    max = levels[^1];
-                }
-                else
-                {
-                    max = 100;
-                }
-                return true;
-            }
-        }
-        catch
-        {
-            return false;
-        }
+    private readonly string _instanceName;
+    private readonly byte[] _levels;
 
-        return false;
+    private WmiBrightnessController(string instanceName, byte[] levels)
+    {
+        _instanceName = instanceName;
+        _levels = levels;
     }
 
-    public static bool TrySetBrightness(byte target)
+    public static IBrightnessDevice? Open(string? deviceInstance)
     {
-        try
+        if (deviceInstance == null) return null;
+        using var searcher = new ManagementObjectSearcher("root\\wmi", "SELECT * FROM WmiMonitorBrightness");
+        using var results = searcher.Get();
+        WmiBrightnessController? match = null;
+        foreach (ManagementObject item in results)
         {
-            using var searcher = new ManagementObjectSearcher("root\\wmi", "SELECT * FROM WmiMonitorBrightnessMethods");
-            foreach (ManagementObject o in searcher.Get())
+            using (item)
             {
-                o.InvokeMethod("WmiSetBrightness", new object[] { 1, target });
-                return true;
+                var name = (string)item["InstanceName"];
+                if (!(bool)item["Active"] || !DisplayIdentity.MatchesWmi(deviceInstance, name)) continue;
+                if (match != null) return null;
+                var levels = (byte[])item["Level"];
+                if (levels.Length == 0) return null;
+                match = new WmiBrightnessController(name, levels.Distinct().Order().ToArray());
             }
         }
-        catch
-        {
-            return false;
-        }
-
-        return false;
+        return match;
     }
+
+    public int ReadBrightness()
+    {
+        using var searcher = new ManagementObjectSearcher("root\\wmi", "SELECT * FROM WmiMonitorBrightness");
+        using var results = searcher.Get();
+        foreach (ManagementObject item in results)
+        {
+            using (item)
+            {
+                if (string.Equals((string)item["InstanceName"], _instanceName, StringComparison.OrdinalIgnoreCase))
+                    return (byte)item["CurrentBrightness"];
+            }
+        }
+        throw new InvalidOperationException("The matched WMI display is no longer available.");
+    }
+
+    public void SetBrightness(int percent)
+    {
+        var target = _levels.MinBy(level => Math.Abs(level - Math.Clamp(percent, 0, 100)));
+        using var searcher = new ManagementObjectSearcher("root\\wmi", "SELECT * FROM WmiMonitorBrightnessMethods");
+        using var results = searcher.Get();
+        foreach (ManagementObject item in results)
+        {
+            using (item)
+            {
+                if (!string.Equals((string)item["InstanceName"], _instanceName, StringComparison.OrdinalIgnoreCase)) continue;
+                var result = item.InvokeMethod("WmiSetBrightness", new object[] { 1u, target });
+                if (result != null && Convert.ToUInt32(result) != 0)
+                    throw new InvalidOperationException($"WMI brightness failed: {result}");
+                return;
+            }
+        }
+        throw new InvalidOperationException("No brightness method belongs to the requested display.");
+    }
+
+    public void Dispose() { }
 }

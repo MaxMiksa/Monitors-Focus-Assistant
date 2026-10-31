@@ -25,6 +25,8 @@ internal sealed class MainAppContext : ApplicationContext
     private readonly ToolStripMenuItem _pauseMenuItem;
     private readonly SynchronizationContext _uiContext;
     private bool _paused;
+    private bool _exiting;
+    private int _hardwareRefresh;
 
     public MainAppContext()
     {
@@ -41,7 +43,6 @@ internal sealed class MainAppContext : ApplicationContext
         _monitorManager = new MonitorManager();
         _overlayManager = new OverlayManager(_monitorManager, _settings);
         _hardwareDimmer = new HardwareDimmer();
-        _hardwareDimmer.Refresh(_monitorManager.Monitors, _settings.HardwareDimDisabledMonitorIds);
         _monitorManager.MonitorsChanged += OnMonitorsChanged;
 
         _mouseTracker = new MouseTracker(50);
@@ -70,11 +71,12 @@ internal sealed class MainAppContext : ApplicationContext
         _trayIcon = new NotifyIcon
         {
             Text = "Monitors Focus",
-            Icon = SystemIcons.Application,
+            Icon = AppIcons.Tray(),
             Visible = true,
             ContextMenuStrip = contextMenu
         };
         _trayIcon.MouseUp += OnTrayMouseUp;
+        _ = RefreshHardwareAsync();
     }
 
     public void TogglePaused()
@@ -84,6 +86,7 @@ internal sealed class MainAppContext : ApplicationContext
 
     public void SetPaused(bool paused)
     {
+        if (_exiting) return;
         _paused = paused;
         UpdatePauseMenuText();
         if (_paused)
@@ -107,7 +110,7 @@ internal sealed class MainAppContext : ApplicationContext
 
     private void OnMouseTick(Point position, Screen screen)
     {
-        if (_paused)
+        if (_paused || _exiting)
         {
             return;
         }
@@ -150,8 +153,9 @@ internal sealed class MainAppContext : ApplicationContext
     {
         _uiContext.Post(_ =>
         {
+            if (_exiting) return;
             _overlayManager.Rebuild(_settings);
-            _hardwareDimmer.Refresh(_monitorManager.Monitors, _settings.HardwareDimDisabledMonitorIds);
+            _ = RefreshHardwareAsync();
             ResetMaskTimers();
             LogSink.Info("Monitor change detected; overlays and dimmer refreshed.");
         }, null);
@@ -172,6 +176,7 @@ internal sealed class MainAppContext : ApplicationContext
 
     private void OpenSettings()
     {
+        if (_exiting) return;
         using var form = new SettingsForm(_settings, _monitorManager.Monitors, _hardwareDimmer.Capabilities);
         if (form.ShowDialog() == DialogResult.OK && form.ResultSettings != null)
         {
@@ -196,7 +201,7 @@ internal sealed class MainAppContext : ApplicationContext
         }
 
         _overlayManager.Rebuild(_settings);
-        _hardwareDimmer.Refresh(_monitorManager.Monitors, _settings.HardwareDimDisabledMonitorIds);
+        _ = RefreshHardwareAsync();
         ResetMaskTimers();
         LogSink.Info($"Settings applied: mode={_settings.DimmingMode}, hwDim={_settings.EnableDdcCi}, level={_settings.HardwareDimLevel}%, opacity={_settings.OverlayOpacity}%.");
         foreach (var kv in _hardwareDimmer.Capabilities)
@@ -213,7 +218,8 @@ internal sealed class MainAppContext : ApplicationContext
                 MessageBoxIcon.Warning);
         }
 
-        StartupManager.Apply("MonitorsFocus", _settings.LaunchOnStartup);
+        // 自启条目统一指向控制核心，旧托盘不再写入无参启动项，避免登录时拉起旧界面。
+        StartupManager.Apply(_settings.LaunchOnStartup, StartupManager.CenterArguments);
 
         if (_paused)
         {
@@ -222,14 +228,43 @@ internal sealed class MainAppContext : ApplicationContext
         }
     }
 
-    protected override void ExitThreadCore()
+    private async Task RefreshHardwareAsync()
     {
+        var refresh = ++_hardwareRefresh;
+        try
+        {
+            await _hardwareDimmer.RefreshAsync(_monitorManager.Monitors,
+                _settings.HardwareDimDisabledMonitorIds,
+                _settings.EnableDdcCi && _settings.DimmingMode != DimmingMode.OverlayOnly);
+            if (_exiting || refresh != _hardwareRefresh) return;
+            _overlayManager.HideAll();
+            ResetMaskTimers();
+        }
+        catch (Exception ex)
+        {
+            LogSink.Info($"Hardware refresh failed: {ex.Message}");
+            if (!_exiting)
+                MessageBox.Show($"Hardware refresh failed: {ex.Message}", "Monitors Focus",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    protected override async void ExitThreadCore()
+    {
+        if (_exiting) return;
+        _exiting = true;
         _mouseTracker.Tick -= OnMouseTick;
         _mouseTracker.Dispose();
         _monitorManager.MonitorsChanged -= OnMonitorsChanged;
         _monitorManager.Dispose();
         _overlayManager.Dispose();
-        _hardwareDimmer.Dispose();
+        _trayIcon.Text = "Monitors Focus - restoring displays";
+        try { await _hardwareDimmer.ShutdownAsync(); }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Display restore failed: {ex.Message}", "Monitors Focus",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
         _hotkeyManager.Dispose();
         _trayIcon.Visible = false;
         _trayIcon.Dispose();

@@ -66,13 +66,46 @@ internal static class NativeMethods
     [DllImport("dxva2.dll", SetLastError = true)]
     internal static extern bool SetMonitorBrightness(IntPtr hMonitor, uint dwNewBrightness);
 
-    [StructLayout(LayoutKind.Sequential)]
+    [DllImport("dxva2.dll", SetLastError = true)]
+    internal static extern bool GetMonitorCapabilities(IntPtr hMonitor, out uint capabilities, out uint colorTemperatures);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    internal static extern bool GetMonitorColorTemperature(IntPtr hMonitor, out uint temperature);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    internal static extern bool GetMonitorRedGreenOrBlueGain(IntPtr hMonitor, uint channel, out uint min, out uint current, out uint max);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    internal static extern bool GetVCPFeatureAndVCPFeatureReply(IntPtr hMonitor, byte code, IntPtr type, out uint current, out uint max);
+
+    [DllImport("dxva2.dll", SetLastError = true)]
+    internal static extern bool SetVCPFeature(IntPtr hMonitor, byte code, uint value);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     internal struct PHYSICAL_MONITOR
     {
         public IntPtr hPhysicalMonitor;
 
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
         public string szPhysicalMonitorDescription;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    internal static extern bool EnumDisplayDevices(string deviceName, uint deviceIndex, ref DISPLAY_DEVICE device, uint flags);
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct DISPLAY_DEVICE
+    {
+        public uint cb;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
+        public string DeviceName;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceString;
+        public uint StateFlags;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceID;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)]
+        public string DeviceKey;
     }
 
     [StructLayout(LayoutKind.Sequential)]

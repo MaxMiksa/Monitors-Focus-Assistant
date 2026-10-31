@@ -9,7 +9,7 @@ namespace MonitorsFocus.Monitoring;
 
 internal sealed class MonitorManager : IDisposable
 {
-    private readonly List<MonitorInfo> _monitors = new();
+    private MonitorInfo[] _monitors = Array.Empty<MonitorInfo>();
 
     public MonitorManager()
     {
@@ -17,21 +17,22 @@ internal sealed class MonitorManager : IDisposable
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
     }
 
-    public IReadOnlyList<MonitorInfo> Monitors => _monitors;
+    public IReadOnlyList<MonitorInfo> Monitors => Volatile.Read(ref _monitors);
 
     public event EventHandler? MonitorsChanged;
 
     public void Refresh()
     {
-        _monitors.Clear();
+        var monitors = new List<MonitorInfo>();
         foreach (var screen in Screen.AllScreens)
         {
             var center = new Point(
                 screen.Bounds.Left + screen.Bounds.Width / 2,
                 screen.Bounds.Top + screen.Bounds.Height / 2);
             var hMonitor = NativeMethods.MonitorFromPoint(center, NativeMethods.MONITOR_DEFAULTTONEAREST);
-            _monitors.Add(new MonitorInfo(screen, hMonitor));
+            monitors.Add(new MonitorInfo(screen, hMonitor));
         }
+        Volatile.Write(ref _monitors, monitors.ToArray());
     }
 
     public MonitorInfo? FindById(string id)
