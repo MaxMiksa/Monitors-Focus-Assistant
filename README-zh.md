@@ -12,6 +12,12 @@ Monitors Focus 是一款本地运行的 Windows 显示器控制中心。常驻�
 
 v2.0.0 是把 v1.0.0 的托盘遮罩应用重写为「内核 + 界面」两层的版本：界面换成 React/TypeScript，硬件访问全部留在 C# 内核，v1 的鼠标跟随熄屏入口保留为兼容启动方式。详见[文档索引](docs/INDEX.md)与[界面核对清单](docs/design/pages/controls.md)。
 
+<p align="center">
+  <a href="https://github.com/MaxMiksa/Monitors-Focus-Assistant/releases/download/v2.0.0/MonitorsFocus-v2.0.0-win-x64.zip">
+    <img src="Presentation/demo.svg" width="720" alt="Monitors Focus 演示"/>
+  </a>
+</p>
+
 ## 功能
 
 | 功能 | 描述 |

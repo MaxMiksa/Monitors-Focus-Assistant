@@ -13,7 +13,9 @@ Monitors Focus is a local Windows display control center. A resident core owns a
 v2.0.0 rewrites the v1.0.0 tray overlay app as a two-layer product: a C# core plus a React/TypeScript interface. The v1 mouse-follow dimming path is still available as a compatibility entry point. See the [documentation index](docs/INDEX.md) and [visual checklist](docs/design/pages/controls.md) (Chinese).
 
 <p align="center">
-  <img src="Presentation/demo.svg" width="820" alt="Monitors Focus demo"/>
+  <a href="https://github.com/MaxMiksa/Monitors-Focus-Assistant/releases/download/v2.0.0/MonitorsFocus-v2.0.0-win-x64.zip">
+    <img src="Presentation/demo.svg" width="820" alt="Monitors Focus demo"/>
+  </a>
 </p>
 
 ## Features
