@@ -1,0 +1,87 @@
+<svg width="1600" height="420" viewBox="0 0 1600 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Monitors Focus — display control center">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fdfefe"/>
+      <stop offset="0.52" stop-color="#f6f9fd"/>
+      <stop offset="1" stop-color="#e9f0fa"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.74" cy="0.26" r="0.55">
+      <stop offset="0" stop-color="#125cd0" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#125cd0" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="curve" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#f0b27a"/>
+      <stop offset="0.5" stop-color="#7aa8ee"/>
+      <stop offset="1" stop-color="#125cd0"/>
+    </linearGradient>
+    <linearGradient id="fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#125cd0" stop-opacity="0.15"/>
+      <stop offset="1" stop-color="#125cd0" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="card" x="-40%" y="-40%" width="180%" height="200%">
+      <feDropShadow dx="0" dy="8" stdDeviation="14" flood-color="#0f172a" flood-opacity="0.09"/>
+    </filter>
+    <filter id="card2" x="-40%" y="-40%" width="180%" height="200%">
+      <feDropShadow dx="0" dy="12" stdDeviation="22" flood-color="#0f172a" flood-opacity="0.13"/>
+    </filter>
+  </defs>
+
+  <rect width="1600" height="420" fill="url(#bg)"/>
+  <rect width="1600" height="420" fill="url(#glow)"/>
+  <rect x="0" y="419" width="1600" height="1" fill="#e3e9f2"/>
+
+  <!-- brand mark -->
+  <g transform="translate(96,60) scale(0.42)">
+    <path d="M240.00 128.00 L239.97 158.68 L239.86 168.46 L239.69 175.57 L239.45 181.33 L239.13 186.25 L238.75 190.59 L238.30 194.48 L237.77 198.02 L237.18 201.27 L236.51 204.27 L235.77 207.06 L234.95 209.67 L234.05 212.10 L233.08 214.39 L232.03 216.53 L230.90 218.55 L229.68 220.45 L228.38 222.24 L226.99 223.92 L225.50 225.50 L223.92 226.99 L222.24 228.38 L220.45 229.68 L218.55 230.90 L216.53 232.03 L214.39 233.08 L212.10 234.05 L209.67 234.95 L207.06 235.77 L204.27 236.51 L201.27 237.18 L198.02 237.77 L194.48 238.30 L190.59 238.75 L186.25 239.13 L181.33 239.45 L175.57 239.69 L168.46 239.86 L158.68 239.97 L128.00 240.00 L97.32 239.97 L87.54 239.86 L80.43 239.69 L74.67 239.45 L69.75 239.13 L65.41 238.75 L61.52 238.30 L57.98 237.77 L54.73 237.18 L51.73 236.51 L48.94 235.77 L46.33 234.95 L43.90 234.05 L41.61 233.08 L39.47 232.03 L37.45 230.90 L35.55 229.68 L33.76 228.38 L32.08 226.99 L30.50 225.50 L29.01 223.92 L27.62 222.24 L26.32 220.45 L25.10 218.55 L23.97 216.53 L22.92 214.39 L21.95 212.10 L21.05 209.67 L20.23 207.06 L19.49 204.27 L18.82 201.27 L18.23 198.02 L17.70 194.48 L17.25 190.59 L16.87 186.25 L16.55 181.33 L16.31 175.57 L16.14 168.46 L16.03 158.68 L16.00 128.00 L16.03 97.32 L16.14 87.54 L16.31 80.43 L16.55 74.67 L16.87 69.75 L17.25 65.41 L17.70 61.52 L18.23 57.98 L18.82 54.73 L19.49 51.73 L20.23 48.94 L21.05 46.33 L21.95 43.90 L22.92 41.61 L23.97 39.47 L25.10 37.45 L26.32 35.55 L27.62 33.76 L29.01 32.08 L30.50 30.50 L32.08 29.01 L33.76 27.62 L35.55 26.32 L37.45 25.10 L39.47 23.97 L41.61 22.92 L43.90 21.95 L46.33 21.05 L48.94 20.23 L51.73 19.49 L54.73 18.82 L57.98 18.23 L61.52 17.70 L65.41 17.25 L69.75 16.87 L74.67 16.55 L80.43 16.31 L87.54 16.14 L97.32 16.03 L128.00 16.00 L158.68 16.03 L168.46 16.14 L175.57 16.31 L181.33 16.55 L186.25 16.87 L190.59 17.25 L194.48 17.70 L198.02 18.23 L201.27 18.82 L204.27 19.49 L207.06 20.23 L209.67 21.05 L212.10 21.95 L214.39 22.92 L216.53 23.97 L218.55 25.10 L220.45 26.32 L222.24 27.62 L223.92 29.01 L225.50 30.50 L226.99 32.08 L228.38 33.76 L229.68 35.55 L230.90 37.45 L232.03 39.47 L233.08 41.61 L234.05 43.90 L234.95 46.33 L235.77 48.94 L236.51 51.73 L237.18 54.73 L237.77 57.98 L238.30 61.52 L238.75 65.41 L239.13 69.75 L239.45 74.67 L239.69 80.43 L239.86 87.54 L239.97 97.32 Z" fill="#125cd0"/>
+    <rect x="52" y="64" width="96" height="72" rx="10" fill="#fff" fill-opacity=".5"/>
+    <rect x="84" y="84" width="128" height="100" rx="20" fill="#125cd0"/>
+    <rect x="92" y="92" width="112" height="84" rx="12" fill="#fff"/>
+    <circle cx="148" cy="134" r="11" fill="#125cd0"/>
+    <path d="M166 134h6M160.73 146.73l4.24 4.24M148 152v6M135.27 146.73l-4.24 4.24M130 134h-6M135.27 121.27l-4.24-4.24M148 116v-6M160.73 121.27l4.24-4.24" stroke="#125cd0" stroke-width="6" stroke-linecap="round"/>
+    <rect x="140" y="176" width="16" height="16" fill="#fff"/>
+    <rect x="120" y="190" width="56" height="10" rx="5" fill="#fff"/>
+  </g>
+
+  <!-- copy -->
+  <text x="96" y="252" font-family="'Segoe UI Semibold','Segoe UI',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif" font-size="50" font-weight="600" fill="#0d1a2b" letter-spacing="-0.6">Monitors Focus</text>
+  <text x="96" y="298" font-family="'Segoe UI',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif" font-size="21" fill="#54657d">双屏亮度 · 硬件色温 · 场景与时间计划</text>
+  <text x="96" y="340" font-family="'Segoe UI',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#8b9bb0" letter-spacing="0.3">v2.0.0 · Windows 10/11 · 本地运行，不联网</text>
+
+  <!-- control panel schematic -->
+  <g transform="translate(872,48)">
+    <rect x="0" y="0" width="376" height="184" rx="18" fill="#ffffff" filter="url(#card)" stroke="#e6ecf5"/>
+    <rect x="28" y="34" width="56" height="9" rx="4.5" fill="#c3cfdf"/>
+    <rect x="102" y="34" width="164" height="7" rx="3.5" fill="#e5eaf2"/>
+    <rect x="102" y="34" width="88" height="7" rx="3.5" fill="#125cd0"/>
+    <circle cx="190" cy="37.5" r="7" fill="#ffffff" stroke="#125cd0" stroke-width="2"/>
+    <text x="292" y="41" font-family="'Segoe UI',sans-serif" font-size="13" fill="#6b7c93">62%</text>
+
+    <rect x="28" y="66" width="56" height="9" rx="4.5" fill="#c3cfdf"/>
+    <rect x="102" y="66" width="164" height="7" rx="3.5" fill="#e5eaf2"/>
+    <rect x="102" y="66" width="122" height="7" rx="3.5" fill="#125cd0"/>
+    <circle cx="224" cy="69.5" r="7" fill="#ffffff" stroke="#125cd0" stroke-width="2"/>
+    <text x="292" y="73" font-family="'Segoe UI',sans-serif" font-size="13" fill="#6b7c93">85%</text>
+
+    <rect x="28" y="98" width="244" height="6" rx="3" fill="#eef2f8"/>
+    <rect x="28" y="98" width="244" height="6" rx="3" fill="url(#curve)" opacity="0.8"/>
+    <circle cx="178" cy="101" r="6" fill="#fff" stroke="#7aa8ee" stroke-width="2"/>
+
+    <rect x="28" y="128" width="70" height="28" rx="10" fill="#eef4ff" stroke="#d6e4fb"/>
+    <circle cx="48" cy="142" r="4.5" fill="#125cd0"/>
+    <rect x="58" y="139" width="28" height="6" rx="3" fill="#b9cdea"/>
+    <rect x="106" y="128" width="70" height="28" rx="10" fill="#f4f6fa"/>
+    <rect x="126" y="139" width="30" height="6" rx="3" fill="#cdd8e6"/>
+    <rect x="298" y="128" width="50" height="28" rx="10" fill="#125cd0"/>
+    <rect x="312" y="139" width="22" height="6" rx="3" fill="#ffffff" opacity="0.85"/>
+  </g>
+
+  <!-- schedule schematic -->
+  <g transform="translate(1016,222)">
+    <rect x="0" y="0" width="416" height="152" rx="18" fill="#ffffff" filter="url(#card2)" stroke="#e6ecf5"/>
+    <text x="28" y="34" font-family="'Segoe UI',-apple-system,'PingFang SC','Microsoft YaHei',sans-serif" font-size="13" fill="#8b9bb0">时间计划</text>
+    <path d="M28 112 L88 112 L148 80 L208 98 L268 54 L328 70 L388 44 L388 124 L28 124 Z" fill="url(#fill)"/>
+    <path d="M28 112 L88 112 L148 80 L208 98 L268 54 L328 70 L388 44" fill="none" stroke="url(#curve)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="268" cy="54" r="5" fill="#ffffff" stroke="#125cd0" stroke-width="2.5"/>
+    <line x1="28" y1="124" x2="388" y2="124" stroke="#eef2f8"/>
+  </g>
+</svg>

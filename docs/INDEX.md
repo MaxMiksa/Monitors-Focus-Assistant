@@ -9,6 +9,7 @@
 - [全面审查与升级规划](upgrade-plan-2026-10-30.md)：原始审查证据、当前技术决策与阶段验收。
 - [界面设计](design/README.md)与[还原核对](design/pages/controls.md)：选定A方案、统一规则、真实差异。
 - [项目协作规则](../AGENTS.md)：维护约定与当前入口。
+- [视觉素材](assets/)：README 用的双语横幅、架构图与面板截图，均为可重生成的矢量或去边框位图。
 - [中文说明](../README-zh.md) / [English](../README.md)：发布基线与开发状态。
 
 `Files/` 为被Git忽略的历史资料，不作为当前流程或验收依据。
