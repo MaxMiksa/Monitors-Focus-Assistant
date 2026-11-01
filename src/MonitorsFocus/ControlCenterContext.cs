@@ -23,7 +23,7 @@ internal sealed class ControlCenterContext : ApplicationContext
         public int? Kelvin;
         public string? Error;
         public OverlayForm? Overlay;
-        public long? LeftAt;
+        public readonly FocusDimming Focus = new();
         public (int, int, int?)? LastRequest;
     }
 
@@ -40,9 +40,11 @@ internal sealed class ControlCenterContext : ApplicationContext
     private bool _scanning;
     private bool _closing;
     private DateTime? _manualUntil;
+    private DateTime? _activePlanAt;
     private long _nextPlanAt;
     private string _source = "手动调节";
     private string? _error;
+    private string? _planError;
 
     public ControlCenterContext(bool openPanel)
     {
@@ -121,7 +123,7 @@ internal sealed class ControlCenterContext : ApplicationContext
             if (_settings.Scenes.Count == 0)
             {
                 foreach (var (name, factor, kelvin) in new[] { ("日常", 1.0, 6500), ("夜间", 0.5, 3200), ("专注", 0.7, 4500) })
-                    _settings.Scenes.Add(new Scene { Name = name, Targets = _displays.ToDictionary(d => d.Id,
+                    _settings.Scenes.Add(new Scene { Name = name, Behavior = SceneBehavior.Capture(_settings), Targets = _displays.ToDictionary(d => d.Id,
                         d => new DisplayTarget((int)Math.Round(d.Brightness * factor), d.Controller?.SupportsColor == true ? kelvin : null)) });
             }
             _nextPlanAt = 0;
@@ -141,22 +143,29 @@ internal sealed class ControlCenterContext : ApplicationContext
             if (plan is { } activePlan && (!_manualUntil.HasValue || DateTime.Now >= _manualUntil))
             {
                 _manualUntil = null;
-                foreach (var d in _displays)
-                    if (activePlan.TryGetTarget(d.Id, out var brightness, out var kelvin))
+                try
+                {
+                    if (_activePlanAt != activePlan.StartsAt)
                     {
-                        d.Brightness = brightness;
-                        d.Kelvin = d.Controller?.SupportsColor == true ? kelvin : null;
+                        ApplySceneBehavior(activePlan.Scene);
+                        _activePlanAt = activePlan.StartsAt;
                     }
-                _source = $"时间计划 · {activePlan.Scene.Name}";
+                    foreach (var d in _displays)
+                        if (activePlan.TryGetTarget(d.Id, out var brightness, out var kelvin))
+                        {
+                            d.Brightness = brightness;
+                            d.Kelvin = d.Controller?.SupportsColor == true ? kelvin : null;
+                        }
+                    _source = $"时间计划 · {activePlan.Scene.Name}";
+                    _planError = null;
+                }
+                catch (Exception ex) { _planError = $"时间计划未应用：{ex.Message}"; }
             }
         }
         var cursor = _settings.FocusEnabled && !_paused ? Cursor.Position : Point.Empty;
         foreach (var d in _displays)
         {
-            var focus = _settings.FocusEnabled && !_paused && !d.Monitor.IsPrimary;
-            if (!focus || d.Monitor.Bounds.Contains(cursor)) d.LeftAt = null;
-            else d.LeftAt ??= now;
-            var dim = d.LeftAt.HasValue && now - d.LeftAt >= _settings.FocusDelaySeconds * 1000L;
+            var dim = d.Focus.Update(_settings, _paused, d.Monitor.IsPrimary, d.Monitor.Bounds.Contains(cursor), now, d.Id);
             if (dim) d.Overlay?.ShowOverlay(); else d.Overlay?.HideOverlay();
             var effective = dim ? Math.Min(d.Brightness, _settings.FocusBrightness) : d.Brightness;
             var target = (d.Brightness, effective, d.Kelvin);
@@ -179,9 +188,21 @@ internal sealed class ControlCenterContext : ApplicationContext
 
     private static int? QuantizeKelvin(int? value) => value.HasValue ? (int)Math.Round(value.Value / 100.0) * 100 : null;
 
+    private void ApplySceneBehavior(Scene scene)
+    {
+        var settings = CloneSettings();
+        if (scene.Behavior?.ApplyTo(settings) == true)
+        {
+            _store.Save(settings);
+            _settings = settings;
+        }
+        foreach (var display in _displays) display.Focus.Reset();
+    }
+
     private void HoldManual()
     {
         _manualUntil = DailyPlan.Evaluate(_settings, DateTime.Now)?.NextAt;
+        _planError = null;
         _source = _manualUntil.HasValue ? $"手动 · 保持至 {_manualUntil:HH:mm}" : "手动调节";
     }
 
@@ -200,7 +221,7 @@ internal sealed class ControlCenterContext : ApplicationContext
                     var values = _settings.Linked ? RatioBinding.Calculate(_settings.LinkWeights, display.Id, value)
                         : new Dictionary<string, int> { [display.Id] = value };
                     foreach (var d in _displays)
-                        if (values.TryGetValue(d.Id, out var brightness)) { d.Brightness = brightness; d.LeftAt = null; }
+                        if (values.TryGetValue(d.Id, out var brightness)) { d.Brightness = brightness; d.Focus.Reset(); }
                     HoldManual();
                     break;
                 case "temperature":
@@ -224,11 +245,13 @@ internal sealed class ControlCenterContext : ApplicationContext
                     _settings = linkedSettings;
                     break;
                 case "scene":
-                    ApplyTargets(_settings.Scenes.Single(s => s.Id == request.Id).Targets);
+                    var scene = _settings.Scenes.Single(s => s.Id == request.Id);
+                    ApplySceneBehavior(scene);
+                    ApplyTargets(scene.Targets);
                     HoldManual();
                     break;
                 case "pause": _paused = !_paused; break;
-                case "resume-plan": _manualUntil = null; _nextPlanAt = 0; break;
+                case "resume-plan": _manualUntil = null; _activePlanAt = null; _nextPlanAt = 0; break;
                 case "rescan": _ = ScanAsync(); break;
                 case "save":
                     var settings = request.Settings ?? throw new ArgumentException("缺少设置。");
@@ -242,6 +265,8 @@ internal sealed class ControlCenterContext : ApplicationContext
                         throw;
                     }
                     _settings = settings;
+                    _planError = null;
+                    _activePlanAt = null;
                     _nextPlanAt = 0;
                     break;
                 case "snapshot": break;
@@ -259,7 +284,7 @@ internal sealed class ControlCenterContext : ApplicationContext
     private ControlSnapshot Snapshot(string? error = null) => new(_displays.Select(d => new DisplayState(d.Id, d.Name,
         d.Brightness, d.Controller != null, d.Controller?.SupportsColor == true, d.Kelvin,
         d.Controller?.Error ?? d.Error, d.Monitor.IsPrimary)).ToList(), CloneSettings(), _paused,
-        _scanning ? "正在检测显示器…" : _source, error, _error);
+        _scanning ? "正在检测显示器…" : _source, error, _planError ?? _error);
 
     private async Task ServeAsync()
     {

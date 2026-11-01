@@ -32,7 +32,7 @@ Monitors Focus puts it in one window: a slider per display that writes the actua
 | Ratio binding | Set a baseline per display, then move both together at their original ratio; weights survive a zero |
 | Hardware color | Writes DDC/CI RGB gain (VCP `0x16` / `0x18` / `0x1A`) with one-click restore; external panels only |
 | Daily schedule | Development build eases in and out after each node; new nodes default to 30 minutes and can span hours. Continuous across midnight; manual adjustments apply immediately until the next node |
-| Scenes | Each scene stores per-display brightness and color targets; switch from the panel or reference it from the schedule |
+| Scenes | Store per-display brightness and color targets. The development build also stores ratio binding, focus enablement and selected secondary displays; manual switches and schedule nodes apply the same rules, keeping the primary display bright |
 | Focus | Dims to a target level after idle time; pause from the panel or tray, or hand control back to the schedule |
 | Launch on startup | One `MonitorsFocus` registry entry pointing at the self-contained core; old entries cleaned up |
 | On-demand panel | Closing the panel ends only the UI process; the core keeps scheduling and restores dimming and color before it exits |

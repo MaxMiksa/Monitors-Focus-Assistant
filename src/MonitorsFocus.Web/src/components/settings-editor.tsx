@@ -4,13 +4,17 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { DisplayRow, Level } from '@/App'
 import type { Send } from '@/App'
-import type { Settings, Snapshot } from '@/lib/control'
+import { captureBehavior } from '@/lib/control'
+import type { SceneBehavior, Settings, Snapshot } from '@/lib/control'
 
 export function SettingsEditor({ page, snapshot, send }: { page: string; snapshot: Snapshot; send: Send }) {
   const [draft, setDraft] = useState(() => structuredClone(snapshot.Settings))
   const [message, setMessage] = useState('')
   const [saving, setSaving] = useState(false)
   function change(update: (settings: Settings) => void) { setDraft(current => { const next = structuredClone(current); update(next); return next }); setMessage('') }
+  function changeBehavior(index: number, update: (behavior: SceneBehavior) => void) {
+    change(s => { const scene = s.Scenes[index]; scene.Behavior ??= captureBehavior(s); update(scene.Behavior) })
+  }
   async function save() {
     setSaving(true)
     try { const saved = await send({ Action: 'save', Settings: draft }); if (saved) { setDraft(structuredClone(saved.Settings)); setMessage('已保存') } }
@@ -20,18 +24,40 @@ export function SettingsEditor({ page, snapshot, send }: { page: string; snapsho
   return <><h1>{title}</h1>
     {page === '时间计划' && <>
       <div className="form-row"><label htmlFor="schedule">按时间自动渐变</label><Switch id="schedule" checked={draft.ScheduleEnabled} onCheckedChange={on => change(s => { s.ScheduleEnabled = on })} /></div>
-      <p className="caption mt-4">到达时间点后柔和渐变，新增节点默认 30 分钟，也可设为数小时；须在下一节点前完成。</p>
+      <p className="caption mt-4">到达时间点后应用场景的绑定与专注规则，亮度和色温按所设时长渐变。</p>
       <ScheduleChart settings={draft} snapshot={snapshot} />
       {draft.Schedule.map((point, i) => <div className="plan-row" key={i}><input aria-label={`时间点 ${i + 1}`} type="time" required value={`${String(Math.floor(point.MinuteOfDay / 60)).padStart(2, '0')}:${String(point.MinuteOfDay % 60).padStart(2, '0')}`} onChange={e => { if (!e.target.value) return; const [h, m] = e.target.value.split(':').map(Number); change(s => { s.Schedule[i].MinuteOfDay = h * 60 + m }) }} /><select aria-label={`时间点 ${i + 1} 场景`} value={point.SceneId} onChange={e => change(s => { s.Schedule[i].SceneId = e.target.value })}>{draft.Scenes.map(scene => <option key={scene.Id} value={scene.Id}>{scene.Name}</option>)}</select><input aria-label={`时间点 ${i + 1} 渐变分钟`} type="number" min={0} max={1440} value={point.TransitionMinutes} onChange={e => change(s => { s.Schedule[i].TransitionMinutes = e.target.valueAsNumber || 0 })} /><span className="caption">分钟</span><Button aria-label={`删除时间点 ${i + 1}`} variant="ghost" size="icon" onClick={() => change(s => { s.Schedule.splice(i, 1) })}><Trash2 /></Button></div>)}
       <div className="actions"><Button variant="outline" disabled={!draft.Scenes.length} onClick={() => change(s => { s.Schedule.push({ MinuteOfDay: 1080, SceneId: s.Scenes[0].Id, TransitionMinutes: 30 }) })}><Plus />添加时间点</Button><Button variant="ghost" onClick={() => void send({ Action: 'resume-plan' })}><RotateCcw />恢复计划</Button></div>
     </>}
     {page === '场景' && <>
-      {draft.Scenes.map((scene, i) => <section className="scene-editor" key={scene.Id}><input aria-label={`场景 ${i + 1} 名称`} value={scene.Name} onChange={e => change(s => { s.Scenes[i].Name = e.target.value })} />{snapshot.Displays.map(display => { const target = scene.Targets[display.Id] ?? { Brightness: display.Brightness, Kelvin: display.Kelvin }; return <div key={display.Id}><DisplayRow display={{ ...display, Brightness: target.Brightness }} onCommit={Brightness => change(s => { s.Scenes[i].Targets[display.Id] = { ...target, Brightness } })} />{display.CanAdjustColor && <div className="flex items-center gap-4 pl-11"><span className="caption">色温</span><Level label={`${scene.Name} ${display.Name} 色温`} value={target.Kelvin ?? 6500} min={2700} max={6500} step={100} temperature onCommit={Kelvin => change(s => { s.Scenes[i].Targets[display.Id] = { ...target, Kelvin } })} /><span className="caption whitespace-nowrap">{target.Kelvin ?? '原色'}{target.Kelvin ? ' K' : ''}</span></div>}</div> })}</section>)}
-      <Button className="mt-5" variant="outline" onClick={() => change(s => { s.Scenes.push({ Id: crypto.randomUUID(), Name: '自定义', Targets: Object.fromEntries(snapshot.Displays.map(d => [d.Id, { Brightness: d.Brightness, Kelvin: d.Kelvin }])) }) })}><Plus />保存当前亮度为新场景</Button>
+      {draft.Scenes.map((scene, i) => {
+        const behavior = scene.Behavior ?? captureBehavior(draft)
+        return <section className="scene-editor" key={scene.Id} aria-label={`场景 ${i + 1}`}>
+          <input aria-label={`场景 ${i + 1} 名称`} value={scene.Name} onChange={e => change(s => { s.Scenes[i].Name = e.target.value })} />
+          {snapshot.Displays.map(display => { const target = scene.Targets[display.Id] ?? { Brightness: display.Brightness, Kelvin: display.Kelvin }; return <div key={display.Id}><DisplayRow display={{ ...display, Brightness: target.Brightness }} onCommit={Brightness => change(s => { s.Scenes[i].Targets[display.Id] = { ...target, Brightness } })} />{display.CanAdjustColor && <div className="flex items-center gap-4 pl-11"><span className="caption whitespace-nowrap">色温</span><Level label={`${scene.Name} ${display.Name} 色温`} value={target.Kelvin ?? 6500} min={2700} max={6500} step={100} temperature onCommit={Kelvin => change(s => { s.Scenes[i].Targets[display.Id] = { ...target, Kelvin } })} /><span className="caption whitespace-nowrap">{target.Kelvin ?? '原色'}{target.Kelvin ? ' K' : ''}</span></div>}</div> })}
+          <div className="form-row"><label htmlFor={`${scene.Id}-link`}>保持亮度比例</label><Switch id={`${scene.Id}-link`} checked={behavior.Linked} disabled={!behavior.Linked && snapshot.Displays.filter(d => d.CanAdjust).length < 2} onCheckedChange={on => changeBehavior(i, b => {
+            b.Linked = on
+            if (on && Object.keys(b.LinkWeights).length < 2) b.LinkWeights = Object.fromEntries(snapshot.Displays.filter(d => d.CanAdjust).map(d => [d.Id, scene.Targets[d.Id]?.Brightness ?? d.Brightness]))
+          })} /></div>
+          {behavior.Linked && Object.entries(behavior.LinkWeights).map(([id, weight]) => <div className="form-row" key={id}><label htmlFor={`${scene.Id}-weight-${id}`}>{snapshot.Displays.find(d => d.Id === id)?.Name ?? `${id}（离线）`} · 比例权重</label><input id={`${scene.Id}-weight-${id}`} type="number" min={0.01} step="any" value={weight} onChange={e => changeBehavior(i, b => { b.LinkWeights[id] = e.target.valueAsNumber || 0 })} /></div>)}
+          <div className="form-row"><label htmlFor={`${scene.Id}-focus`}>启用专注调暗</label><Switch id={`${scene.Id}-focus`} checked={behavior.FocusEnabled} onCheckedChange={on => changeBehavior(i, b => { b.FocusEnabled = on })} /></div>
+          <ControlledDisplays id={scene.Id} snapshot={snapshot} value={behavior.ControlledDisplayIds} onChange={ids => changeBehavior(i, b => { b.ControlledDisplayIds = ids })} />
+        </section>
+      })}
+      <Button className="mt-5" variant="outline" onClick={() => change(s => { s.Scenes.push({ Id: crypto.randomUUID(), Name: '自定义', Behavior: captureBehavior(snapshot.Settings), Targets: Object.fromEntries(snapshot.Displays.map(d => [d.Id, { Brightness: d.Brightness, Kelvin: d.Kelvin }])) }) })}><Plus />保存当前设置为新场景</Button>
     </>}
-    {page === '专注' && <><div className="form-row"><label htmlFor="focus">离开副屏后自动变暗</label><Switch id="focus" checked={draft.FocusEnabled} onCheckedChange={on => change(s => { s.FocusEnabled = on })} /></div><div className="form-row"><label htmlFor="delay">等待时间（秒）</label><input id="delay" type="number" min={0} max={600} value={draft.FocusDelaySeconds} onChange={e => change(s => { s.FocusDelaySeconds = e.target.valueAsNumber || 0 })} /></div><div className="form-row"><label htmlFor="dim">专注时硬件亮度（%）</label><input id="dim" type="number" min={0} max={100} value={draft.FocusBrightness} onChange={e => change(s => { s.FocusBrightness = e.target.valueAsNumber || 0 })} /></div><p className="caption mt-5">鼠标返回恢复正常亮度。可从控制面板或托盘暂停、恢复专注。</p></>}
+    {page === '专注' && <><div className="form-row"><label htmlFor="focus">离开副屏后自动变暗</label><Switch id="focus" checked={draft.FocusEnabled} onCheckedChange={on => change(s => { s.FocusEnabled = on })} /></div><ControlledDisplays id="current" snapshot={snapshot} value={draft.ControlledDisplayIds ?? null} onChange={ids => change(s => { s.ControlledDisplayIds = ids })} /><div className="form-row"><label htmlFor="delay">等待时间（秒）</label><input id="delay" type="number" min={0} max={600} value={draft.FocusDelaySeconds} onChange={e => change(s => { s.FocusDelaySeconds = e.target.valueAsNumber || 0 })} /></div><div className="form-row"><label htmlFor="dim">专注时硬件亮度（%）</label><input id="dim" type="number" min={0} max={100} value={draft.FocusBrightness} onChange={e => change(s => { s.FocusBrightness = e.target.valueAsNumber || 0 })} /></div><p className="caption mt-5">鼠标返回恢复正常亮度。可从控制面板或托盘暂停、恢复专注。</p></>}
     {page === '通用' && <><div className="form-row"><label htmlFor="startup">登录后自动启动</label><Switch id="startup" checked={draft.LaunchOnStartup} onCheckedChange={on => change(s => { s.LaunchOnStartup = on })} /></div><p className="caption my-5">登录后在托盘启动，不弹出面板。</p><Button variant="outline" onClick={() => void send({ Action: 'rescan' })}><RefreshCw />重新检测显示器</Button></>}
     <div className="actions"><Button disabled={saving} onClick={() => void save()}>{saving ? '正在保存…' : '保存'}</Button><Button variant="ghost" disabled={saving} onClick={() => { setDraft(structuredClone(snapshot.Settings)); setMessage('已重新载入，未保存改动已放弃') }}>放弃改动并重新载入</Button><p className="caption self-center" role="status">{message}</p></div>
+  </>
+}
+function ControlledDisplays({ id, snapshot, value, onChange }: { id: string; snapshot: Snapshot; value: string[] | null; onChange: (ids: string[] | null) => void }) {
+  const displays = snapshot.Displays.filter(d => !d.IsPrimary)
+  const offline = (value ?? []).filter(key => !snapshot.Displays.some(d => d.Id === key))
+  return <>
+    <div className="form-row"><label htmlFor={`${id}-controlled`}>参与专注的副屏</label><select id={`${id}-controlled`} value={value === null ? 'all' : 'selected'} onChange={e => onChange(e.target.value === 'all' ? null : displays.map(d => d.Id))}><option value="all">全部副屏</option><option value="selected">指定副屏</option></select></div>
+    {value !== null && [...displays.map(d => ({ Id: d.Id, Name: d.Name })), ...offline.map(Id => ({ Id, Name: `${Id}（离线）` }))].map(d => <div className="form-row" key={d.Id}><label htmlFor={`${id}-controlled-${d.Id}`}>{d.Name}</label><Switch id={`${id}-controlled-${d.Id}`} checked={value.includes(d.Id)} onCheckedChange={on => onChange(on ? [...value, d.Id] : value.filter(key => key !== d.Id))} /></div>)}
+    <p className="caption mt-4">主屏始终保持亮度。指定副屏全部关闭时，不调暗任何屏幕。</p>
   </>
 }
 function ScheduleChart({ settings, snapshot }: { settings: Settings; snapshot: Snapshot }) {

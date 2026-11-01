@@ -13,6 +13,7 @@ public sealed class ControlSettings
     public bool Linked { get; set; }
     public Dictionary<string, double> LinkWeights { get; set; } = new();
     public bool FocusEnabled { get; set; }
+    public List<string>? ControlledDisplayIds { get; set; }
     public int FocusDelaySeconds { get; set; } = 180;
     public int FocusBrightness { get; set; } = 10;
     public bool ScheduleEnabled { get; set; }
@@ -26,6 +27,36 @@ public sealed class Scene
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "新场景";
     public Dictionary<string, DisplayTarget> Targets { get; set; } = new();
+    public SceneBehavior? Behavior { get; set; }
+}
+
+public sealed class SceneBehavior
+{
+    public bool Linked { get; set; }
+    public Dictionary<string, double> LinkWeights { get; set; } = new();
+    public bool FocusEnabled { get; set; }
+    // null follows all secondary displays; an empty list controls none.
+    public List<string>? ControlledDisplayIds { get; set; }
+
+    public static SceneBehavior Capture(ControlSettings settings) => new()
+    {
+        Linked = settings.Linked, LinkWeights = new(settings.LinkWeights),
+        FocusEnabled = settings.FocusEnabled, ControlledDisplayIds = settings.ControlledDisplayIds?.ToList()
+    };
+
+    public bool ApplyTo(ControlSettings settings)
+    {
+        var changed = settings.Linked != Linked || settings.FocusEnabled != FocusEnabled ||
+            settings.LinkWeights.Count != LinkWeights.Count ||
+            LinkWeights.Any(pair => !settings.LinkWeights.TryGetValue(pair.Key, out var value) || value != pair.Value) ||
+            (ControlledDisplayIds == null ? settings.ControlledDisplayIds != null :
+                settings.ControlledDisplayIds == null || !ControlledDisplayIds.ToHashSet().SetEquals(settings.ControlledDisplayIds));
+        settings.Linked = Linked;
+        settings.LinkWeights = new(LinkWeights);
+        settings.FocusEnabled = FocusEnabled;
+        settings.ControlledDisplayIds = ControlledDisplayIds?.ToList();
+        return changed;
+    }
 }
 
 public sealed record DisplayTarget(int Brightness, int? Kelvin);
@@ -68,11 +99,13 @@ public static class DailyPlan
         if (settings.SchemaVersion != 1) throw new ArgumentException("配置版本不受支持。");
         if (settings.FocusDelaySeconds is < 0 or > 600 || settings.FocusBrightness is < 0 or > 100)
             throw new ArgumentException("专注参数超出范围。");
+        ValidateBinding(settings.Linked, settings.LinkWeights);
         if (settings.Scenes.Select(x => x.Id).Distinct().Count() != settings.Scenes.Count)
             throw new ArgumentException("场景标识重复。");
         foreach (var scene in settings.Scenes)
         {
             if (string.IsNullOrWhiteSpace(scene.Name)) throw new ArgumentException("请为场景命名。");
+            if (scene.Behavior != null) ValidateBinding(scene.Behavior.Linked, scene.Behavior.LinkWeights);
             foreach (var target in scene.Targets.Values)
                 if (target.Brightness is < 0 or > 100 || target.Kelvin is < 2700 or > 6500)
                     throw new ArgumentException("亮度或色温超出范围。");
@@ -89,6 +122,12 @@ public static class DailyPlan
                 throw new ArgumentException("渐变必须在下一个时间节点前完成。");
             if (!settings.Scenes.Any(s => s.Id == point.SceneId)) throw new ArgumentException("时间计划引用了不存在的场景。");
         }
+    }
+
+    private static void ValidateBinding(bool linked, Dictionary<string, double> weights)
+    {
+        if (weights.Values.Any(value => value <= 0 || !double.IsFinite(value)) || (linked && weights.Count < 2))
+            throw new ArgumentException("比例绑定需要至少两块屏幕，且各屏权重必须大于零。");
     }
 
     public static PlanResult? Evaluate(ControlSettings settings, DateTime now)

@@ -5,8 +5,13 @@ namespace MonitorsFocus.Settings;
 
 internal sealed class ControlSettingsStore
 {
-    private readonly string _path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Monitors-Focus", "control-center.json");
+    private readonly string _path;
+
+    public ControlSettingsStore(string? directory = null)
+    {
+        _path = Path.Combine(directory ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "Monitors-Focus"), "control-center.json");
+    }
 
     public ControlSettings Load()
     {
@@ -14,11 +19,13 @@ internal sealed class ControlSettingsStore
         var settings = JsonSerializer.Deserialize<ControlSettings>(File.ReadAllText(_path))
             ?? throw new InvalidDataException("配置为空。");
         DailyPlan.Validate(settings);
+        foreach (var scene in settings.Scenes) scene.Behavior ??= SceneBehavior.Capture(settings);
         return settings;
     }
 
     public void Save(ControlSettings settings)
     {
+        foreach (var scene in settings.Scenes) scene.Behavior ??= SceneBehavior.Capture(settings);
         DailyPlan.Validate(settings);
         settings.Revision++;
         Directory.CreateDirectory(Path.GetDirectoryName(_path)!);

@@ -2,7 +2,9 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using MonitorsFocus;
 using MonitorsFocus.Brightness;
+using MonitorsFocus.Core;
 using MonitorsFocus.Monitoring;
+using MonitorsFocus.Settings;
 
 if (args.Contains("--probe"))
 {
@@ -37,6 +39,97 @@ if (args.Contains("--probe"))
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Scene behavior survives saving without sharing mutable settings or losing offline screens", () => WithSettingsDirectory(directory =>
+    {
+        var settings = new ControlSettings { Linked = true, LinkWeights = new() { ["main"] = 40, ["secondary"] = 60 },
+            FocusEnabled = true, ControlledDisplayIds = new() { "secondary", "offline" } };
+        var scene = new Scene { Behavior = SceneBehavior.Capture(settings) };
+        settings.Scenes.Add(scene);
+        settings.LinkWeights["main"] = 20;
+        settings.ControlledDisplayIds.Clear();
+        var store = new ControlSettingsStore(directory);
+        store.Save(settings);
+        settings = store.Load();
+        var behavior = settings.Scenes.Single().Behavior!;
+        Check(behavior.ApplyTo(settings));
+        Equal(50, RatioBinding.Calculate(settings.LinkWeights, "main", 50)["main"]);
+        Equal(75, RatioBinding.Calculate(settings.LinkWeights, "main", 50)["secondary"]);
+        Equal("secondary,offline", string.Join(',', settings.ControlledDisplayIds!));
+        Check(!behavior.ApplyTo(settings));
+        settings.LinkWeights["main"] = 10;
+        settings.ControlledDisplayIds!.Clear();
+        Equal(40.0, behavior.LinkWeights["main"]);
+        Equal(2, behavior.ControlledDisplayIds!.Count);
+        new SceneBehavior { ControlledDisplayIds = new() }.ApplyTo(settings);
+        Check(!settings.Linked && !settings.FocusEnabled && settings.ControlledDisplayIds!.Count == 0);
+        store.Save(settings);
+        Equal(0, store.Load().ControlledDisplayIds!.Count);
+    })),
+    ("Existing scenes inherit current behavior without rewriting the original configuration", () => WithSettingsDirectory(directory =>
+    {
+        var path = Path.Combine(directory, "control-center.json");
+        const string original = "{\"Linked\":true,\"LinkWeights\":{\"a\":40,\"b\":60},\"FocusEnabled\":true,\"Scenes\":[{\"Name\":\"旧场景\"}]}";
+        File.WriteAllText(path, original);
+        var store = new ControlSettingsStore(directory);
+        var settings = store.Load();
+        var behavior = settings.Scenes.Single().Behavior!;
+        Check(behavior.Linked && behavior.FocusEnabled && behavior.ControlledDisplayIds == null);
+        Equal(original, File.ReadAllText(path));
+        settings.LinkWeights["a"] = 20;
+        Equal(40.0, behavior.LinkWeights["a"]);
+        store.Save(settings);
+        Equal(40.0, store.Load().Scenes.Single().Behavior!.LinkWeights["a"]);
+    })),
+    ("Scene bindings reject unusable ratios before saving", () =>
+    {
+        foreach (var weights in new Dictionary<string, double>[] { new(), new() { ["a"] = 1 },
+            new() { ["a"] = 0, ["b"] = 1 }, new() { ["a"] = double.NaN, ["b"] = 1 } })
+        {
+            var settings = new ControlSettings { Scenes = new() { new Scene { Behavior = new() { Linked = true, LinkWeights = weights } } } };
+            var rejected = false;
+            try { DailyPlan.Validate(settings); } catch (ArgumentException) { rejected = true; }
+            Check(rejected);
+        }
+        return Task.CompletedTask;
+    }),
+    ("Schedule uses the arriving scene rules immediately while brightness fades across midnight", () =>
+    {
+        var evening = new Scene { Id = "evening", Targets = new() { ["a"] = new(80, 6500) }, Behavior = new() { FocusEnabled = true } };
+        var night = new Scene { Id = "night", Targets = new() { ["a"] = new(20, 2700) },
+            Behavior = new() { Linked = true, LinkWeights = new() { ["a"] = 1, ["offline"] = 2 }, ControlledDisplayIds = new() } };
+        var settings = new ControlSettings { ScheduleEnabled = true, Scenes = new() { evening, night },
+            Schedule = new() { new(720, evening.Id, 0), new(0, night.Id, 60) } };
+        DailyPlan.Validate(settings);
+        var midnight = new DateTime(2026, 11, 1);
+        var start = DailyPlan.Evaluate(settings, midnight)!.Value;
+        Equal("night", start.Scene.Id);
+        Check(start.TryGetTarget("a", out var brightness, out _));
+        Equal(80, brightness);
+        start.Scene.Behavior!.ApplyTo(settings);
+        Check(settings.Linked && !settings.FocusEnabled && settings.ControlledDisplayIds!.Count == 0);
+        var middle = DailyPlan.Evaluate(settings, midnight.AddMinutes(30))!.Value;
+        Check(middle.TryGetTarget("a", out brightness, out var kelvin));
+        Equal(50, brightness);
+        Equal(4600, kelvin);
+        Equal(midnight.AddHours(12), middle.NextAt);
+        Equal("evening", DailyPlan.Evaluate(settings, midnight.AddHours(12))!.Value.Scene.Id);
+        return Task.CompletedTask;
+    }),
+    ("Focus selection excludes primary and unselected screens and restarts the delay after a rule change", () =>
+    {
+        var settings = new ControlSettings { FocusEnabled = true, FocusDelaySeconds = 3, ControlledDisplayIds = new() { "secondary", "main" } };
+        var focus = new FocusDimming();
+        Check(!focus.Update(settings, false, false, false, 0, "secondary"));
+        Check(focus.Update(settings, false, false, false, 3000, "secondary"));
+        Check(!focus.Update(settings, false, false, false, 3050, "other"));
+        Check(!focus.Update(settings, false, true, false, 3100, "main"));
+        settings.ControlledDisplayIds.Clear();
+        Check(!focus.Update(settings, false, false, false, 3200, "secondary"));
+        settings.ControlledDisplayIds = null;
+        Check(!focus.Update(settings, false, false, false, 3300, "secondary"));
+        Check(focus.Update(settings, false, false, false, 6300, "secondary"));
+        return Task.CompletedTask;
+    }),
     ("Six-hour daily fade eases across midnight and interpolates native color", DailyPlanChecks.LongFadeAsync),
     ("Daily fade handles instant, single-node, disabled and overlapping schedules", DailyPlanChecks.BoundariesAsync),
     ("72-hour simulated daily plan has bounded allocations", DailyPlanChecks.AllocationAsync),
@@ -166,6 +259,21 @@ static void Equal<T>(T expected, T actual)
 {
     if (!EqualityComparer<T>.Default.Equals(expected, actual))
         throw new Exception($"Expected {expected}, got {actual}.");
+}
+
+static Task WithSettingsDirectory(Action<string> run)
+{
+    var tempRoot = Path.GetFullPath(Path.GetTempPath());
+    var directory = Path.Combine(tempRoot, "MonitorsFocus-tests-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(directory);
+    try { run(directory); }
+    finally
+    {
+        if (Path.GetDirectoryName(Path.GetFullPath(directory)) != tempRoot.TrimEnd(Path.DirectorySeparatorChar))
+            throw new InvalidOperationException("Unexpected test directory.");
+        Directory.Delete(directory, recursive: true);
+    }
+    return Task.CompletedTask;
 }
 
 class FakeDevice : IBrightnessDevice
