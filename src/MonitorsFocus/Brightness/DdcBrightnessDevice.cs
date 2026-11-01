@@ -4,7 +4,7 @@ using MonitorsFocus.Monitoring;
 
 namespace MonitorsFocus.Brightness;
 
-internal sealed class DdcBrightnessDevice : IBrightnessDevice
+internal sealed class DdcBrightnessDevice : IColorDevice
 {
     private readonly NativeMethods.PHYSICAL_MONITOR[] _handles;
     private readonly uint _min;

@@ -31,7 +31,7 @@ Monitors Focus puts it in one window: a slider per display that writes the actua
 | Per-display brightness | Independent slider per display, written straight to the backlight; DDC/CI for external, WMI for internal |
 | Ratio binding | Set a baseline per display, then move both together at their original ratio; weights survive a zero |
 | Hardware color | Writes DDC/CI RGB gain (VCP `0x16` / `0x18` / `0x1A`) with one-click restore; external panels only |
-| Daily schedule | Per-minute nodes with fade duration, computed across midnight, brightness and color judged per capability |
+| Daily schedule | Development build eases in and out after each node; new nodes default to 30 minutes and can span hours. Continuous across midnight; manual adjustments apply immediately until the next node |
 | Scenes | Each scene stores per-display brightness and color targets; switch from the panel or reference it from the schedule |
 | Focus | Dims to a target level after idle time; pause from the panel or tray, or hand control back to the schedule |
 | Launch on startup | One `MonitorsFocus` registry entry pointing at the self-contained core; old entries cleaned up |
@@ -63,7 +63,8 @@ The package bundles the .NET runtime. You only need Microsoft Edge WebView2 Runt
 | Dual-display brightness reads | Verified on real hardware |
 | External color write and restore | Verified on AOC U27G4 |
 | Ratio binding on real hardware | Pending |
-| Long fades, resume and hot-plug reconnection, sustained mixed DPI | Pending |
+| Long fades and memory (development build) | Six-hour overnight fade, 72-hour per-second simulation and slow-device request coalescing pass; plan evaluation allocates 0 bytes. Sustained real-device experience pending |
+| Resume and hot-plug reconnection, sustained mixed DPI | Pending |
 
 The development build removes all application hotkeys in both modes; saved hotkey fields are ignored and omitted on the next legacy settings save. Scene hotkeys are no longer planned.
 

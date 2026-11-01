@@ -37,6 +37,41 @@ if (args.Contains("--probe"))
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Six-hour daily fade eases across midnight and interpolates native color", DailyPlanChecks.LongFadeAsync),
+    ("Daily fade handles instant, single-node, disabled and overlapping schedules", DailyPlanChecks.BoundariesAsync),
+    ("72-hour simulated daily plan has bounded allocations", DailyPlanChecks.AllocationAsync),
+    ("Color fades write only changed hardware gains and reapply after restore", async () =>
+    {
+        var device = new FakeColorDevice();
+        var controller = new ControlledDisplay(device);
+        for (var kelvin = 6500; kelvin >= 6400; kelvin--)
+            await controller.ApplyAsync(60, 60, kelvin);
+        Check(device.GainWrites is >= 2 and <= 4);
+        var writes = device.GainWrites;
+        await controller.ApplyAsync(60, 60, null);
+        await controller.ApplyAsync(60, 60, 6400);
+        Equal(writes + 1, device.GainWrites);
+        await controller.CloseAsync();
+        Equal("100,100,100", string.Join(',', device.Gains));
+    }),
+    ("Slow device coalesces 100000 fade requests into the latest target", async () =>
+    {
+        var device = new FakeDevice { BlockFirstWrite = true };
+        var controller = new ControlledDisplay(device);
+        var first = controller.ApplyAsync(60, 10, null);
+        await device.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 100000; i++)
+            Check(ReferenceEquals(first, controller.ApplyAsync(60, i % 100, null)));
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(allocated <= 1024);
+        var last = controller.ApplyAsync(60, 20, null);
+        device.Release.Set();
+        await last;
+        Equal("10,20", string.Join(',', device.Writes));
+        await controller.CloseAsync();
+        Equal(60, device.Brightness);
+    }),
     ("Native buffer layout matches Windows", () =>
     {
         Equal(IntPtr.Size == 8 ? 264 : 260, Marshal.SizeOf<NativeMethods.PHYSICAL_MONITOR>());
@@ -133,7 +168,7 @@ static void Equal<T>(T expected, T actual)
         throw new Exception($"Expected {expected}, got {actual}.");
 }
 
-sealed class FakeDevice : IBrightnessDevice
+class FakeDevice : IBrightnessDevice
 {
     public int Brightness = 60;
     public bool BlockFirstWrite;
@@ -164,4 +199,13 @@ sealed class FakeDevice : IBrightnessDevice
     }
 
     public void Dispose() { Disposed = true; Release.Dispose(); }
+}
+
+sealed class FakeColorDevice : FakeDevice, IColorDevice
+{
+    public int GainWrites;
+    public uint[] Gains = { 100, 100, 100 };
+    public uint[]? ReadGains() => Gains.ToArray();
+    public void SetGains(uint[] values) { GainWrites++; Gains = values.ToArray(); }
+    public void RestoreGains(uint[] values) => Gains = values.ToArray();
 }

@@ -138,11 +138,16 @@ internal sealed class ControlCenterContext : ApplicationContext
         {
             _nextPlanAt = now + 1000;
             var plan = DailyPlan.Evaluate(_settings, DateTime.Now);
-            if (plan != null && (!_manualUntil.HasValue || DateTime.Now >= _manualUntil))
+            if (plan is { } activePlan && (!_manualUntil.HasValue || DateTime.Now >= _manualUntil))
             {
                 _manualUntil = null;
-                ApplyTargets(plan.Targets);
-                _source = $"时间计划 · {plan.SceneName}";
+                foreach (var d in _displays)
+                    if (activePlan.TryGetTarget(d.Id, out var brightness, out var kelvin))
+                    {
+                        d.Brightness = brightness;
+                        d.Kelvin = d.Controller?.SupportsColor == true ? kelvin : null;
+                    }
+                _source = $"时间计划 · {activePlan.Scene.Name}";
             }
         }
         var cursor = _settings.FocusEnabled && !_paused ? Cursor.Position : Point.Empty;

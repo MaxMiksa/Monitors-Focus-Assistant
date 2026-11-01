@@ -42,7 +42,24 @@ public static class RatioBinding
     }
 }
 
-public sealed record PlanResult(DateTime StartsAt, DateTime NextAt, string SceneName, Dictionary<string, DisplayTarget> Targets);
+public readonly record struct PlanResult(DateTime StartsAt, DateTime NextAt, Scene Scene, Scene Prior, double Progress)
+{
+    public bool TryGetTarget(string id, out int brightness, out int? kelvin)
+    {
+        brightness = 0;
+        kelvin = null;
+        if (!Scene.Targets.TryGetValue(id, out var target)) return false;
+        var from = Prior.Targets.GetValueOrDefault(id, target);
+        brightness = (int)Math.Round(from.Brightness + (target.Brightness - from.Brightness) * Progress);
+        // Native white is the baseline of our hardware warmth approximation. Restore the
+        // actual original preset at a native endpoint, rather than retaining a 6500 K override.
+        if (Progress <= 0) kelvin = from.Kelvin;
+        else if (Progress >= 1) kelvin = target.Kelvin;
+        else if (from.Kelvin.HasValue || target.Kelvin.HasValue)
+            kelvin = (int)Math.Round((from.Kelvin ?? 6500) + ((target.Kelvin ?? 6500) - (from.Kelvin ?? 6500)) * Progress);
+        return true;
+    }
+}
 
 public static class DailyPlan
 {
@@ -77,24 +94,35 @@ public static class DailyPlan
     public static PlanResult? Evaluate(ControlSettings settings, DateTime now)
     {
         if (!settings.ScheduleEnabled || settings.Schedule.Count == 0) return null;
-        var events = Enumerable.Range(-1, 3).SelectMany(day => settings.Schedule.Select(p =>
-            (At: now.Date.AddDays(day).AddMinutes(p.MinuteOfDay), Point: p))).OrderBy(x => x.At).ToArray();
-        var index = Array.FindLastIndex(events, e => e.At <= now);
-        var current = events[index];
-        var previous = events[Math.Max(0, index - 1)];
-        var scene = settings.Scenes.Single(s => s.Id == current.Point.SceneId);
-        var prior = settings.Scenes.Single(s => s.Id == previous.Point.SceneId);
-        var duration = current.Point.TransitionMinutes;
-        var progress = duration == 0 ? 1 : Math.Clamp((now - current.At).TotalMinutes / duration, 0, 1);
-        var targets = scene.Targets.ToDictionary(pair => pair.Key, pair =>
+        // Only inspect neighbouring nodes; never expand days or retain animation frames.
+        PlanPoint? current = null;
+        var startsAt = DateTime.MinValue;
+        var nextAt = DateTime.MaxValue;
+        foreach (var point in settings.Schedule)
         {
-            var from = prior.Targets.GetValueOrDefault(pair.Key, pair.Value);
-            var brightness = (int)Math.Round(from.Brightness + (pair.Value.Brightness - from.Brightness) * progress);
-            int? temperature = pair.Value.Kelvin;
-            if (from.Kelvin.HasValue && temperature.HasValue)
-                temperature = (int)Math.Round(from.Kelvin.Value + (temperature.Value - from.Kelvin.Value) * progress);
-            return new DisplayTarget(brightness, temperature);
-        });
-        return new PlanResult(current.At, events[index + 1].At, scene.Name, targets);
+            var at = now.Date.AddMinutes(point.MinuteOfDay);
+            var previousAt = at <= now ? at : at.AddDays(-1);
+            var followingAt = at > now ? at : at.AddDays(1);
+            if (previousAt > startsAt) { startsAt = previousAt; current = point; }
+            if (followingAt < nextAt) nextAt = followingAt;
+        }
+        PlanPoint? previous = null;
+        var priorAt = DateTime.MinValue;
+        foreach (var point in settings.Schedule)
+        {
+            var at = startsAt.Date.AddMinutes(point.MinuteOfDay);
+            if (at >= startsAt) at = at.AddDays(-1);
+            if (at > priorAt) { priorAt = at; previous = point; }
+        }
+        Scene? scene = null, prior = null;
+        foreach (var candidate in settings.Scenes)
+        {
+            if (candidate.Id == current!.SceneId) scene = candidate;
+            if (candidate.Id == previous!.SceneId) prior = candidate;
+        }
+        var duration = current!.TransitionMinutes;
+        var progress = duration == 0 ? 1 : Math.Clamp((now - startsAt).TotalMinutes / duration, 0, 1);
+        progress = progress * progress * (3 - 2 * progress);
+        return new PlanResult(startsAt, nextAt, scene!, prior!, progress);
     }
 }

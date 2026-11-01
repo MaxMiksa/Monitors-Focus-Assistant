@@ -12,6 +12,7 @@ internal sealed class ControlledDisplay
     private int _lastBrightness;
     private int _normalBrightness;
     private int? _lastKelvin;
+    private (uint Red, uint Green, uint Blue)? _lastGains;
     private bool _temporaryBrightness;
     private bool _colorOwned;
     private bool _running;
@@ -24,7 +25,7 @@ internal sealed class ControlledDisplay
     {
         _device = device;
         _normalBrightness = _lastBrightness = device.ReadBrightness();
-        if (device is DdcBrightnessDevice ddc) _originalGains = ddc.ReadGains();
+        if (device is IColorDevice ddc) _originalGains = ddc.ReadGains();
     }
 
     public int InitialBrightness => _normalBrightness;
@@ -80,27 +81,33 @@ internal sealed class ControlledDisplay
             _lastBrightness = target.Effective;
             _temporaryBrightness = target.Effective != target.Normal;
         }
-        if (_device is not DdcBrightnessDevice ddc || _originalGains == null) return;
+        if (_device is not IColorDevice ddc || _originalGains == null) return;
         if (!target.Kelvin.HasValue)
         {
             if (_colorOwned) ddc.RestoreGains(_originalGains);
             _colorOwned = false;
             _lastKelvin = null;
+            _lastGains = null;
         }
         else if (_lastKelvin != target.Kelvin)
         {
-            _colorOwned = true;
-            ddc.SetGains(WarmGains(_originalGains, target.Kelvin.Value));
+            var warmGains = WarmGains(_originalGains, target.Kelvin.Value);
+            if (_lastGains != warmGains)
+            {
+                _colorOwned = true;
+                ddc.SetGains(new[] { warmGains.Red, warmGains.Green, warmGains.Blue });
+                _lastGains = warmGains;
+            }
             _lastKelvin = target.Kelvin;
         }
     }
 
-    internal static uint[] WarmGains(uint[] baseline, int kelvin)
+    internal static (uint Red, uint Green, uint Blue) WarmGains(uint[] baseline, int kelvin)
     {
         // Approximate warmth relative to the user's native white point, not calibrated CCT.
         var warmth = (6500 - Math.Clamp(kelvin, 2700, 6500)) / 3800.0;
-        return new[] { baseline[0], (uint)Math.Round(baseline[1] * (1 - 0.28 * warmth)),
-            (uint)Math.Round(baseline[2] * (1 - 0.65 * warmth)) };
+        return (baseline[0], (uint)Math.Round(baseline[1] * (1 - 0.28 * warmth)),
+            (uint)Math.Round(baseline[2] * (1 - 0.65 * warmth)));
     }
 
     private void Restore()
@@ -118,11 +125,12 @@ internal sealed class ControlledDisplay
         catch (Exception ex) { failure = ex; }
         try
         {
-            if (_colorOwned && _device is DdcBrightnessDevice ddc && _originalGains != null)
+            if (_colorOwned && _device is IColorDevice ddc && _originalGains != null)
             {
                 ddc.RestoreGains(_originalGains);
                 _colorOwned = false;
                 _lastKelvin = null;
+                _lastGains = null;
             }
         }
         catch (Exception ex) { failure ??= ex; }

@@ -20,7 +20,7 @@ export function SettingsEditor({ page, snapshot, send }: { page: string; snapsho
   return <><h1>{title}</h1>
     {page === '时间计划' && <>
       <div className="form-row"><label htmlFor="schedule">按时间自动渐变</label><Switch id="schedule" checked={draft.ScheduleEnabled} onCheckedChange={on => change(s => { s.ScheduleEnabled = on })} /></div>
-      <p className="caption mt-4">到达时间点后，逐渐过渡至所选场景。每个节点可单独设置渐变时长。</p>
+      <p className="caption mt-4">到达时间点后柔和渐变，新增节点默认 30 分钟，也可设为数小时；须在下一节点前完成。</p>
       <ScheduleChart settings={draft} snapshot={snapshot} />
       {draft.Schedule.map((point, i) => <div className="plan-row" key={i}><input aria-label={`时间点 ${i + 1}`} type="time" required value={`${String(Math.floor(point.MinuteOfDay / 60)).padStart(2, '0')}:${String(point.MinuteOfDay % 60).padStart(2, '0')}`} onChange={e => { if (!e.target.value) return; const [h, m] = e.target.value.split(':').map(Number); change(s => { s.Schedule[i].MinuteOfDay = h * 60 + m }) }} /><select aria-label={`时间点 ${i + 1} 场景`} value={point.SceneId} onChange={e => change(s => { s.Schedule[i].SceneId = e.target.value })}>{draft.Scenes.map(scene => <option key={scene.Id} value={scene.Id}>{scene.Name}</option>)}</select><input aria-label={`时间点 ${i + 1} 渐变分钟`} type="number" min={0} max={1440} value={point.TransitionMinutes} onChange={e => change(s => { s.Schedule[i].TransitionMinutes = e.target.valueAsNumber || 0 })} /><span className="caption">分钟</span><Button aria-label={`删除时间点 ${i + 1}`} variant="ghost" size="icon" onClick={() => change(s => { s.Schedule.splice(i, 1) })}><Trash2 /></Button></div>)}
       <div className="actions"><Button variant="outline" disabled={!draft.Scenes.length} onClick={() => change(s => { s.Schedule.push({ MinuteOfDay: 1080, SceneId: s.Scenes[0].Id, TransitionMinutes: 30 }) })}><Plus />添加时间点</Button><Button variant="ghost" onClick={() => void send({ Action: 'resume-plan' })}><RotateCcw />恢复计划</Button></div>
@@ -48,10 +48,11 @@ function ScheduleChart({ settings, snapshot }: { settings: Settings; snapshot: S
     const from = settings.Scenes.find(s => s.Id === prior.SceneId)?.Targets[display.Id] ?? target
     if (!target || !from) continue
     const elapsed = (time - point.MinuteOfDay + 1440) % 1440
-    const t = point.TransitionMinutes === 0 ? 1 : Math.min(1, elapsed / point.TransitionMinutes)
+    const progress = point.TransitionMinutes === 0 ? 1 : Math.min(1, elapsed / point.TransitionMinutes)
+    const t = progress * progress * (3 - 2 * progress)
     const x = 44 + minute / 1440 * 540
     brightness.push(`${x},${170 - (from.Brightness + (target.Brightness - from.Brightness) * t) * 1.3}`)
-    if (display.CanAdjustColor && target.Kelvin !== null) { const k = from.Kelvin === null ? target.Kelvin : from.Kelvin + (target.Kelvin - from.Kelvin) * t; color.push(`${x},${170 - (k - 2700) / 3800 * 130}`) }
+    if (display.CanAdjustColor) { const k = (from.Kelvin ?? 6500) + ((target.Kelvin ?? 6500) - (from.Kelvin ?? 6500)) * t; color.push(`${x},${170 - (k - 2700) / 3800 * 130}`) }
   }
   return <><p className="caption mt-5">{display?.Name ?? '显示器'} · 计划预览 · 蓝色亮度 / 橙色色温</p><svg className="chart" viewBox="0 0 640 216" role="img" aria-label="当前编辑计划的亮度和色温曲线">{[0, 50, 100].map(v => <g key={v}><line x1="44" x2="584" y1={170 - v * 1.3} y2={170 - v * 1.3} stroke="var(--color-border)" /><text x="0" y={175 - v * 1.3}>{v}%</text></g>)}{[0, 6, 12, 18, 24].map(h => <text key={h} x={28 + h / 24 * 540} y="202">{String(h).padStart(2, '0')}:00</text>)}<text x="590" y="45">6500</text><text x="590" y="175">2700</text>{valid ? <><polyline points={brightness.join(' ')} fill="none" stroke="var(--color-primary)" strokeWidth="2" /><polyline points={color.join(' ')} fill="none" stroke="var(--warm)" strokeWidth="2" /></> : <text x="170" y="110">{points.length ? '请检查时间点和渐变时长' : '添加时间点，预览一天的变化'}</text>}</svg></>
 }
