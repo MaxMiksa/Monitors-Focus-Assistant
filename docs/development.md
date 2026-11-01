@@ -6,7 +6,7 @@
 
 | 目录 | 职责 |
 | --- | --- |
-| src/MonitorsFocus | C#托盘核心、DDC/WMI、遮罩、热键、配置、自启；保留旧版入口便于迁移 |
+| src/MonitorsFocus | C#托盘核心、DDC/WMI、遮罩、配置、自启；保留旧版入口便于迁移 |
 | src/MonitorsFocus.Core | 状态协议、比例计算、每日计划纯计算 |
 | src/MonitorsFocus.Web | React/TS界面、Tailwind参数、shadcn源码组件、Motion和Lucide |
 | src/MonitorsFocus.WebHost | 薄WinForms窗口承载WebView2；本地资源映射、消息桥和关闭释放 |
@@ -30,6 +30,10 @@ $env:DOTNET_ROOT_X64 = 'D:\Apps\dotnet'
 ```
 
 桌面宿主启动同目录发布包或工作区Release核心，发送 `--center --background`。若旧版已在托盘运行，应先退出旧版，避免旧版单实例锁阻止新核心启动。关闭面板仅退出宿主，核心继续运行；退出核心从托盘菜单操作，并等待硬件恢复。
+
+## 操作入口
+
+应用不再注册全局快捷键，也不提供快捷键设置；场景快捷键不在后续需求中。专注暂停、恢复通过控制面板或托盘操作。标准控件的键盘操作保持可用。
 
 ## 登录自启
 

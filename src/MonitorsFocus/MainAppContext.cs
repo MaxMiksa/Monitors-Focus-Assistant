@@ -4,7 +4,6 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 using MonitorsFocus.Brightness;
-using MonitorsFocus.Hotkeys;
 using MonitorsFocus.Monitoring;
 using MonitorsFocus.Overlay;
 using MonitorsFocus.Settings;
@@ -20,7 +19,6 @@ internal sealed class MainAppContext : ApplicationContext
     private readonly OverlayManager _overlayManager;
     private readonly HardwareDimmer _hardwareDimmer;
     private readonly MouseTracker _mouseTracker;
-    private readonly HotkeyManager _hotkeyManager;
     private readonly NotifyIcon _trayIcon;
     private readonly ToolStripMenuItem _pauseMenuItem;
     private readonly SynchronizationContext _uiContext;
@@ -48,10 +46,6 @@ internal sealed class MainAppContext : ApplicationContext
         _mouseTracker = new MouseTracker(50);
         _mouseTracker.Tick += OnMouseTick;
         _mouseTracker.Start();
-
-        _hotkeyManager = new HotkeyManager();
-        _hotkeyManager.HotkeyPressed += TogglePaused;
-        _hotkeyManager.Register(_settings.Hotkey);
 
         _pauseMenuItem = new ToolStripMenuItem();
         _pauseMenuItem.Click += (_, _) => TogglePaused();
@@ -209,15 +203,6 @@ internal sealed class MainAppContext : ApplicationContext
             LogSink.Info($"Capability status: {kv.Key} -> {kv.Value.Status} ({kv.Value.Message ?? "n/a"})");
         }
 
-        if (!_hotkeyManager.Register(_settings.Hotkey))
-        {
-            MessageBox.Show(
-                "Failed to register the global hotkey. It may be used by another app.",
-                "Monitors Focus",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Warning);
-        }
-
         // 自启条目统一指向控制核心，旧托盘不再写入无参启动项，避免登录时拉起旧界面。
         StartupManager.Apply(_settings.LaunchOnStartup, StartupManager.CenterArguments);
 
@@ -265,7 +250,6 @@ internal sealed class MainAppContext : ApplicationContext
             MessageBox.Show($"Display restore failed: {ex.Message}", "Monitors Focus",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
-        _hotkeyManager.Dispose();
         _trayIcon.Visible = false;
         _trayIcon.Dispose();
         base.ExitThreadCore();

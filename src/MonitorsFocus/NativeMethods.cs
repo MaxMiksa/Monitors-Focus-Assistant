@@ -17,13 +17,6 @@ internal static class NativeMethods
 
     internal static readonly IntPtr HWND_TOPMOST = new(-1);
 
-    internal const int WM_HOTKEY = 0x0312;
-    internal const uint MOD_ALT = 0x0001;
-    internal const uint MOD_CONTROL = 0x0002;
-    internal const uint MOD_SHIFT = 0x0004;
-    internal const uint MOD_WIN = 0x0008;
-    internal const uint MOD_NOREPEAT = 0x4000;
-
     internal const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -35,18 +28,6 @@ internal static class NativeMethods
         int cx,
         int cy,
         uint uFlags);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    internal static extern bool RegisterHotKey(
-        IntPtr hWnd,
-        int id,
-        uint fsModifiers,
-        uint vk);
-
-    [DllImport("user32.dll", SetLastError = true)]
-    internal static extern bool UnregisterHotKey(
-        IntPtr hWnd,
-        int id);
 
     [DllImport("user32.dll")]
     internal static extern IntPtr MonitorFromPoint(POINT pt, uint flags);

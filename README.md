@@ -33,7 +33,7 @@ Monitors Focus puts it in one window: a slider per display that writes the actua
 | Hardware color | Writes DDC/CI RGB gain (VCP `0x16` / `0x18` / `0x1A`) with one-click restore; external panels only |
 | Daily schedule | Per-minute nodes with fade duration, computed across midnight, brightness and color judged per capability |
 | Scenes | Each scene stores per-display brightness and color targets; switch from the panel or reference it from the schedule |
-| Focus | Dims to a target level after idle time; pause anytime or hand control back to the schedule |
+| Focus | Dims to a target level after idle time; pause from the panel or tray, or hand control back to the schedule |
 | Launch on startup | One `MonitorsFocus` registry entry pointing at the self-contained core; old entries cleaned up |
 | On-demand panel | Closing the panel ends only the UI process; the core keeps scheduling and restores dimming and color before it exits |
 
@@ -64,6 +64,8 @@ The package bundles the .NET runtime. You only need Microsoft Edge WebView2 Runt
 | External color write and restore | Verified on AOC U27G4 |
 | Ratio binding on real hardware | Pending |
 | Long fades, resume and hot-plug reconnection, sustained mixed DPI | Pending |
+
+The development build removes all application hotkeys in both modes; saved hotkey fields are ignored and omitted on the next legacy settings save. Scene hotkeys are no longer planned.
 
 Unverified items stay marked pending. A clean build is not treated as acceptance.
 

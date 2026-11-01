@@ -5,7 +5,7 @@
 - 已发布基线为 v1.0.0 WinForms；当前工作区已迁移 .NET 10，正在开发显示器控制中心，尚未发布。
 - 前端已确定为 TypeScript + React + Tailwind CSS + shadcn/ui + Motion + Lucide；C# WebView2 宿主按需打开，关闭后释放。已停止 WinUI 3 路线，不引入 Tauri/Rust。
 - `src/MonitorsFocus` 是常驻核心和兼容旧版入口，`--center --background` 启动新核心；`src/MonitorsFocus.Core` 为协议与纯计算；`src/MonitorsFocus.Web` 为界面；`src/MonitorsFocus.WebHost` 为桌面宿主。没有 Web 后端或生产 HTTP 服务。
-- 功能范围：双屏亮度、保持比例的绑定、每日计划与渐变、场景、专注和登录自启。仅硬件色温，内屏暂不调色；不实施软件 Gamma。
+- 功能范围：双屏亮度、保持比例的绑定、每日计划与渐变、场景、专注和登录自启。已按用户要求移除全部应用快捷键，包括新版固定 Ctrl+F12 和旧版自定义热键；暂停、恢复使用面板或托盘，场景快捷键不再列入需求。仅硬件色温，内屏暂不调色；不实施软件 Gamma。
 - 硬件读取、构建与假设备恢复检查已有验证；硬件写入恢复、休眠重连、长时间资源和完整交互仍需验收，不把编译通过等同于完成。
 
 ## 开发约定

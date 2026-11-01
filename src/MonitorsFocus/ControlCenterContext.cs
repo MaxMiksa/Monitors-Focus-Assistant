@@ -4,7 +4,6 @@ using System.Text.Json;
 using Microsoft.Win32;
 using MonitorsFocus.Brightness;
 using MonitorsFocus.Core;
-using MonitorsFocus.Hotkeys;
 using MonitorsFocus.Monitoring;
 using MonitorsFocus.Overlay;
 using MonitorsFocus.Settings;
@@ -34,7 +33,6 @@ internal sealed class ControlCenterContext : ApplicationContext
     private readonly ControlSettingsStore _store = new();
     private readonly List<Display> _displays = new();
     private readonly NotifyIcon _tray;
-    private readonly HotkeyManager _hotkeys = new();
     private readonly Timer _timer = new() { Interval = 50 };
     private readonly SemaphoreSlim _scanGate = new(1);
     private ControlSettings _settings;
@@ -59,8 +57,6 @@ internal sealed class ControlCenterContext : ApplicationContext
         menu.Items.Add("退出", null, (_, _) => ExitThread());
         _tray = new NotifyIcon { Text = "Monitors Focus", Icon = AppIcons.Tray(), Visible = true, ContextMenuStrip = menu };
         _tray.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) OpenPanel(); };
-        _hotkeys.HotkeyPressed += ToggleFocus;
-        if (!_hotkeys.Register(HotkeySettings.CreateDefault())) _error = "Ctrl+F12 已被占用，可从托盘暂停专注。";
         _timer.Tick += (_, _) => Tick();
         _timer.Start();
         _monitors.MonitorsChanged += MonitorsChanged;
@@ -71,7 +67,6 @@ internal sealed class ControlCenterContext : ApplicationContext
         if (openPanel) OpenPanel();
     }
 
-    private void ToggleFocus() { _paused = !_paused; Tick(); }
     private void MonitorsChanged(object? sender, EventArgs e) => _ui.Post(_ => { if (!_closing) _ = ScanAsync(); }, null);
     private void ThemeChanged(object sender, UserPreferenceChangedEventArgs e)
     {
@@ -313,7 +308,6 @@ internal sealed class ControlCenterContext : ApplicationContext
         _closing = true;
         _lifetime.Cancel();
         _timer.Dispose();
-        _hotkeys.Dispose();
         SystemEvents.PowerModeChanged -= PowerChanged;
         SystemEvents.UserPreferenceChanged -= ThemeChanged;
         _monitors.MonitorsChanged -= MonitorsChanged;

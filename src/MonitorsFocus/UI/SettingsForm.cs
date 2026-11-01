@@ -16,11 +16,6 @@ internal sealed class SettingsForm : Form
     private readonly NumericUpDown _delayInput;
     private readonly TrackBar _opacityTrack;
     private readonly Label _opacityValue;
-    private readonly CheckBox _ctrlCheck;
-    private readonly CheckBox _altCheck;
-    private readonly CheckBox _shiftCheck;
-    private readonly CheckBox _winCheck;
-    private readonly ComboBox _keyCombo;
     private readonly CheckBox _startupCheck;
     private readonly CheckBox _hardwareDimCheck;
     private readonly TrackBar _hardwareDimTrack;
@@ -106,30 +101,6 @@ internal sealed class SettingsForm : Form
         };
         PopulateMonitors(monitors);
         AddRow(layout, "monitors", "Controlled monitors:", _monitorList);
-
-        _ctrlCheck = new CheckBox { Text = "Ctrl", Checked = _settings.Hotkey.Ctrl, AutoSize = true };
-        _altCheck = new CheckBox { Text = "Alt", Checked = _settings.Hotkey.Alt, AutoSize = true };
-        _shiftCheck = new CheckBox { Text = "Shift", Checked = _settings.Hotkey.Shift, AutoSize = true };
-        _winCheck = new CheckBox { Text = "Win", Checked = _settings.Hotkey.Win, AutoSize = true };
-
-        _keyCombo = new ComboBox
-        {
-            DropDownStyle = ComboBoxStyle.DropDownList,
-            Width = 120
-        };
-        foreach (var key in GetAllowedHotkeys())
-        {
-            _keyCombo.Items.Add(key);
-        }
-        _keyCombo.SelectedItem = _settings.Hotkey.Key;
-
-        var hotkeyPanel = new FlowLayoutPanel { AutoSize = true };
-        hotkeyPanel.Controls.Add(_ctrlCheck);
-        hotkeyPanel.Controls.Add(_altCheck);
-        hotkeyPanel.Controls.Add(_shiftCheck);
-        hotkeyPanel.Controls.Add(_winCheck);
-        hotkeyPanel.Controls.Add(_keyCombo);
-        AddRow(layout, "hotkey", "Hotkey:", hotkeyPanel);
 
         _startupCheck = new CheckBox
         {
@@ -286,23 +257,11 @@ internal sealed class SettingsForm : Form
 
     private void OnSave()
     {
-        if (_keyCombo.SelectedItem is not Keys selectedKey)
-        {
-            MessageBox.Show(this, "Please choose a hotkey.", "Monitors Focus", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            DialogResult = DialogResult.None;
-            return;
-        }
-
         _settings.DelaySeconds = (int)_delayInput.Value;
         _settings.OverlayOpacity = _opacityTrack.Value;
         _settings.LaunchOnStartup = _startupCheck.Checked;
         _settings.EnableDdcCi = _hardwareDimCheck.Checked;
         _settings.HardwareDimLevel = _hardwareDimTrack.Value;
-        _settings.Hotkey.Ctrl = _ctrlCheck.Checked;
-        _settings.Hotkey.Alt = _altCheck.Checked;
-        _settings.Hotkey.Shift = _shiftCheck.Checked;
-        _settings.Hotkey.Win = _winCheck.Checked;
-        _settings.Hotkey.Key = selectedKey;
 
         var selectedIds = new List<string>();
         foreach (var index in _monitorList.CheckedIndices.Cast<int>())
@@ -478,7 +437,6 @@ internal sealed class SettingsForm : Form
         _translationsEn["delay"] = "Delay (seconds):";
         _translationsEn["opacity"] = "Overlay opacity:";
         _translationsEn["monitors"] = "Controlled monitors:";
-        _translationsEn["hotkey"] = "Hotkey:";
         _translationsEn["startup"] = "Startup:";
         _translationsEn["language"] = "Language:";
         _translationsEn["dimmingMode"] = "Dimming mode:";
@@ -500,7 +458,6 @@ internal sealed class SettingsForm : Form
         _translationsZh["delay"] = "延迟（秒）：";
         _translationsZh["opacity"] = "遮罩透明度：";
         _translationsZh["monitors"] = "受控显示器：";
-        _translationsZh["hotkey"] = "热键：";
         _translationsZh["startup"] = "开机自启：";
         _translationsZh["language"] = "语言：";
         _translationsZh["dimmingMode"] = "调光模式：";
@@ -563,19 +520,6 @@ internal sealed class SettingsForm : Form
 
             var item = new ListViewItem(new[] { monitor.Id, status, message });
             _hardwareStatusList.Items.Add(item);
-        }
-    }
-
-    private static IEnumerable<Keys> GetAllowedHotkeys()
-    {
-        for (var key = Keys.F1; key <= Keys.F12; key++)
-        {
-            yield return key;
-        }
-
-        for (var key = Keys.A; key <= Keys.Z; key++)
-        {
-            yield return key;
         }
     }
 
