@@ -37,6 +37,7 @@ internal sealed class PanelWindow : Form
     private readonly CancellationTokenSource _lifetime = new();
     private readonly SemaphoreSlim _requests = new(1, 1);
     private readonly bool _dev;
+    private string _language = Localization.ReadPreference();
     private string Origin => _dev ? "http://127.0.0.1:5173" : "https://monitors-focus.example";
     private sealed record Message(string Id, ControlRequest Request);
     private static readonly HashSet<string> Actions = new()
@@ -82,10 +83,11 @@ internal sealed class PanelWindow : Form
                 if (!File.Exists(Path.Combine(assets, "index.html"))) throw new IOException("界面文件缺失，请先运行完整构建。");
                 core.SetVirtualHostNameToFolderMapping("monitors-focus.example", assets, CoreWebView2HostResourceAccessKind.DenyCors);
             }
-            core.Navigate(Origin + (_dev ? "/" : "/index.html"));
+            core.Navigate(Origin + (_dev ? "/" : "/index.html") + "?language=" + Localization.Resolve(_language)
+                + "&systemLanguage=" + Localization.Resolve("system"));
         }
         catch (Exception ex) when (!_lifetime.IsCancellationRequested)
-        { MessageBox.Show(this, ex.Message, "界面启动失败"); Close(); }
+        { MessageBox.Show(this, Localization.Message(ex.Message, _language), Localization.Text("界面启动失败", _language)); Close(); }
     }
 
     private bool IsTrusted(string source) => Uri.TryCreate(source, UriKind.Absolute, out var uri)
@@ -112,6 +114,7 @@ internal sealed class PanelWindow : Form
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(_lifetime.Token);
                 timeout.CancelAfter(TimeSpan.FromSeconds(8));
                 snapshot = await ControlProtocol.SendAsync(message.Request, timeout.Token);
+                _language = snapshot.Settings.Language;
             }
             finally { _requests.Release(); }
             if (!_lifetime.IsCancellationRequested)
@@ -120,7 +123,7 @@ internal sealed class PanelWindow : Form
         catch (Exception ex)
         {
             if (message != null && !_lifetime.IsCancellationRequested)
-                _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { message.Id, Error = ex.Message }));
+                _web.CoreWebView2.PostWebMessageAsJson(JsonSerializer.Serialize(new { message.Id, Error = Localization.Message(ex is OperationCanceledException ? "控制核心响应超时，请重试" : ex.Message, _language) }));
         }
     }
 

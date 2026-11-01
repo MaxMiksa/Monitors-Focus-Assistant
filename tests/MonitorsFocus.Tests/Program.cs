@@ -6,6 +6,10 @@ using MonitorsFocus.Core;
 using MonitorsFocus.Monitoring;
 using MonitorsFocus.Settings;
 
+System.Windows.Forms.Application.SetHighDpiMode(System.Windows.Forms.HighDpiMode.PerMonitorV2);
+
+if (args.Contains("--window-fixture")) { WindowDetectionChecks.RunFixture(); return; }
+
 if (args.Contains("--probe"))
 {
     using var manager = new MonitorManager();
@@ -39,6 +43,128 @@ if (args.Contains("--probe"))
 
 var tests = new (string Name, Func<Task> Run)[]
 {
+    ("Live manual handoff fades from current levels; explicit resume recomputes clock position", ControlCenterChecks.ManualHandoffAsync),
+    ("Missed schedule node after sleep computes current position without replay", ControlCenterChecks.MissedNodeAsync),
+    ("Language and focus saves preserve manual overrides and do not replay scene rules", ControlCenterChecks.UnrelatedSaveAsync),
+    ("Editing an active plan reapplies targets and disabling it clears the source", ControlCenterChecks.PlanEditAsync),
+    ("Offline ratio members do not clamp connected displays or block new displays", ControlCenterChecks.OfflineBindingAsync),
+    ("All combined settings persist across languages and preserve user names and offline rules", ControlCenterChecks.SettingsRoundTripAsync),
+    ("Focus, plan, fullscreen protection, pause and scene selection share the latest baseline", ControlCenterChecks.FocusPlanFullscreenAsync),
+    ("Bilingual resources, language persistence and migration", () => { LocalizationChecks.Run(); return Task.CompletedTask; }),
+    ("Six-hour daily fade eases across midnight and interpolates native color", DailyPlanChecks.LongFadeAsync),
+    ("Daily fade handles instant, single-node, disabled and overlapping schedules", DailyPlanChecks.BoundariesAsync),
+    ("72-hour simulated daily plan has bounded allocations", DailyPlanChecks.AllocationAsync),
+    ("Color fades write only changed hardware gains and reapply after restore", async () =>
+    {
+        var device = new FakeColorDevice();
+        var controller = new ControlledDisplay(device);
+        for (var kelvin = 6500; kelvin >= 6400; kelvin--)
+            await controller.ApplyAsync(60, 60, kelvin);
+        Check(device.GainWrites is >= 2 and <= 4);
+        var writes = device.GainWrites;
+        await controller.ApplyAsync(60, 60, null);
+        await controller.ApplyAsync(60, 60, 6400);
+        Equal(writes + 1, device.GainWrites);
+        await controller.CloseAsync();
+        Equal("100,100,100", string.Join(',', device.Gains));
+    }),
+    ("Slow device coalesces 100000 fade requests into the latest target", async () =>
+    {
+        var device = new FakeDevice { BlockFirstWrite = true };
+        var controller = new ControlledDisplay(device);
+        var first = controller.ApplyAsync(60, 10, null);
+        await device.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < 100000; i++)
+            Check(ReferenceEquals(first, controller.ApplyAsync(60, i % 100, null)));
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Check(allocated <= 1024);
+        var last = controller.ApplyAsync(60, 20, null);
+        device.Release.Set();
+        await last;
+        Equal("10,20", string.Join(',', device.Writes));
+        await controller.CloseAsync();
+        Equal(60, device.Brightness);
+    }),
+    ("Native buffer layout matches Windows", () =>
+    {
+        Equal(IntPtr.Size == 8 ? 264 : 260, Marshal.SizeOf<NativeMethods.PHYSICAL_MONITOR>());
+        Equal(IntPtr.Size, Marshal.OffsetOf<NativeMethods.PHYSICAL_MONITOR>("szPhysicalMonitorDescription").ToInt32());
+        Equal(840, Marshal.SizeOf<NativeMethods.DISPLAY_DEVICE>());
+        return Task.CompletedTask;
+    }),
+    ("WMI matching cannot select another monitor", () =>
+    {
+        var identity = DisplayIdentity.FromInterfacePath(@"\\?\DISPLAY#BOE1234#5&ABC&0&UID1#{guid}");
+        Equal(@"DISPLAY\BOE1234\5&ABC&0&UID1", identity!);
+        Check(DisplayIdentity.MatchesWmi(identity!, identity + "_0"));
+        Check(!DisplayIdentity.MatchesWmi(identity!, identity + "2_0"));
+        Check(!DisplayIdentity.MatchesWmi(identity!, @"DISPLAY\AOC1234\5&ABC&0&UID1_0"));
+        Check(DisplayIdentity.FromInterfacePath("unknown") == null);
+        return Task.CompletedTask;
+    }),
+    ("Fullscreen arrival wakes a dimmed secondary and departure starts a fresh delay", async () =>
+    {
+        var settings = new ControlSettings { FocusEnabled = true, FocusDelaySeconds = 3 };
+        var focus = new FocusDimming();
+        var device = new FakeDevice();
+        var controller = new ControlledDisplay(device);
+        async Task Apply(long now, bool fullscreen)
+        {
+            var dim = focus.Update(settings, false, false, false, fullscreen, now);
+            await controller.ApplyAsync(60, dim ? 10 : 60, null);
+        }
+        await Apply(0, false);
+        await Apply(3000, false);
+        Equal(10, device.Brightness);
+        await Apply(3050, true); // Window moved by keyboard; pointer remains on the primary.
+        Equal(60, device.Brightness);
+        await Apply(100000, true); // No foreground-window dependency.
+        Equal(60, device.Brightness);
+        await Apply(100050, false);
+        await Apply(103049, false);
+        Equal(60, device.Brightness);
+        await Apply(103050, false);
+        Equal(10, device.Brightness);
+        await controller.CloseAsync();
+        Equal("10,60,10,60", string.Join(',', device.Writes));
+    }),
+    ("Fullscreen override respects its switch, pause, primary and pointer activity", () =>
+    {
+        var settings = new ControlSettings { FocusEnabled = true, FocusDelaySeconds = 0,
+            KeepSecondaryAwakeOnFullscreen = false };
+        var focus = new FocusDimming();
+        Check(focus.Update(settings, false, false, false, true, 0));
+        settings.KeepSecondaryAwakeOnFullscreen = true;
+        Check(!focus.Update(settings, false, false, false, true, 50));
+        Check(!focus.Update(settings, false, true, false, false, 100));
+        Check(!focus.Update(settings, true, false, false, false, 150));
+        Check(!focus.Update(settings, false, false, true, false, 200));
+        settings.FocusEnabled = false;
+        Check(!focus.Update(settings, false, false, false, false, 250));
+        return Task.CompletedTask;
+    }),
+    ("Fullscreen bounds match individual displays at negative and scaled desktop coordinates", () =>
+    {
+        var screen = new System.Drawing.Rectangle(-2560, -400, 2560, 1440);
+        Check(FullscreenWindowDetector.MatchesDisplay(screen, screen));
+        Check(FullscreenWindowDetector.MatchesDisplay(new(-2561, -400, 2562, 1440), screen));
+        Check(!FullscreenWindowDetector.MatchesDisplay(new(-2560, -400, 2560, 1400), screen));
+        Check(!FullscreenWindowDetector.MatchesDisplay(new(-2560, -400, 5120, 1440), screen));
+        Check(!FullscreenWindowDetector.MatchesDisplay(new(0, 0, 2560, 1440), screen));
+        return Task.CompletedTask;
+    }),
+    ("Existing settings gain fullscreen protection and preserve a saved opt-out", () => WithSettingsDirectory(directory =>
+    {
+        File.WriteAllText(Path.Combine(directory, "control-center.json"), "{\"FocusEnabled\":true}");
+        var store = new ControlSettingsStore(directory);
+        var settings = store.Load();
+        Check(settings.FocusEnabled && settings.KeepSecondaryAwakeOnFullscreen);
+        settings.KeepSecondaryAwakeOnFullscreen = false;
+        store.Save(settings);
+        Check(!store.Load().KeepSecondaryAwakeOnFullscreen);
+    })),
+    ("Native detection follows fullscreen and maximized windows across displays", WindowDetectionChecks.RunAsync),
     ("Scene behavior survives saving without sharing mutable settings or losing offline screens", () => WithSettingsDirectory(directory =>
     {
         var settings = new ControlSettings { Linked = true, LinkWeights = new() { ["main"] = 40, ["secondary"] = 60 },
@@ -119,69 +245,89 @@ var tests = new (string Name, Func<Task> Run)[]
     {
         var settings = new ControlSettings { FocusEnabled = true, FocusDelaySeconds = 3, ControlledDisplayIds = new() { "secondary", "main" } };
         var focus = new FocusDimming();
-        Check(!focus.Update(settings, false, false, false, 0, "secondary"));
-        Check(focus.Update(settings, false, false, false, 3000, "secondary"));
-        Check(!focus.Update(settings, false, false, false, 3050, "other"));
-        Check(!focus.Update(settings, false, true, false, 3100, "main"));
+        Check(!focus.Update(settings, false, false, false, false, 0, "secondary"));
+        Check(focus.Update(settings, false, false, false, false, 3000, "secondary"));
+        Check(!focus.Update(settings, false, false, false, false, 3050, "other"));
+        Check(!focus.Update(settings, false, true, false, false, 3100, "main"));
         settings.ControlledDisplayIds.Clear();
-        Check(!focus.Update(settings, false, false, false, 3200, "secondary"));
+        Check(!focus.Update(settings, false, false, false, false, 3200, "secondary"));
         settings.ControlledDisplayIds = null;
-        Check(!focus.Update(settings, false, false, false, 3300, "secondary"));
-        Check(focus.Update(settings, false, false, false, 6300, "secondary"));
+        Check(!focus.Update(settings, false, false, false, false, 3300, "secondary"));
+        Check(focus.Update(settings, false, false, false, false, 6300, "secondary"));
         return Task.CompletedTask;
     }),
-    ("Six-hour daily fade eases across midnight and interpolates native color", DailyPlanChecks.LongFadeAsync),
-    ("Daily fade handles instant, single-node, disabled and overlapping schedules", DailyPlanChecks.BoundariesAsync),
-    ("72-hour simulated daily plan has bounded allocations", DailyPlanChecks.AllocationAsync),
-    ("Color fades write only changed hardware gains and reapply after restore", async () =>
+    ("Center exit restores a raised baseline even when effective brightness stayed unchanged", async () =>
     {
-        var device = new FakeColorDevice();
+        var device = new FakeDevice { Brightness = 10 };
         var controller = new ControlledDisplay(device);
-        for (var kelvin = 6500; kelvin >= 6400; kelvin--)
-            await controller.ApplyAsync(60, 60, kelvin);
-        Check(device.GainWrites is >= 2 and <= 4);
-        var writes = device.GainWrites;
-        await controller.ApplyAsync(60, 60, null);
-        await controller.ApplyAsync(60, 60, 6400);
-        Equal(writes + 1, device.GainWrites);
-        await controller.CloseAsync();
-        Equal("100,100,100", string.Join(',', device.Gains));
-    }),
-    ("Slow device coalesces 100000 fade requests into the latest target", async () =>
-    {
-        var device = new FakeDevice { BlockFirstWrite = true };
-        var controller = new ControlledDisplay(device);
-        var first = controller.ApplyAsync(60, 10, null);
-        await device.Entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
-        var before = GC.GetAllocatedBytesForCurrentThread();
-        for (var i = 0; i < 100000; i++)
-            Check(ReferenceEquals(first, controller.ApplyAsync(60, i % 100, null)));
-        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        Check(allocated <= 1024);
-        var last = controller.ApplyAsync(60, 20, null);
-        device.Release.Set();
-        await last;
-        Equal("10,20", string.Join(',', device.Writes));
+        await controller.ApplyAsync(10, 10, null);
+        await controller.ApplyAsync(60, 10, null);
         await controller.CloseAsync();
         Equal(60, device.Brightness);
+        Equal("60", string.Join(',', device.Writes));
+        Check(device.Disposed);
     }),
-    ("Native buffer layout matches Windows", () =>
+    ("Center exit leaves a new normal brightness untouched", async () =>
     {
-        Equal(IntPtr.Size == 8 ? 264 : 260, Marshal.SizeOf<NativeMethods.PHYSICAL_MONITOR>());
-        Equal(IntPtr.Size, Marshal.OffsetOf<NativeMethods.PHYSICAL_MONITOR>("szPhysicalMonitorDescription").ToInt32());
-        Equal(840, Marshal.SizeOf<NativeMethods.DISPLAY_DEVICE>());
-        return Task.CompletedTask;
+        var device = new FakeDevice();
+        var controller = new ControlledDisplay(device);
+        await controller.ApplyAsync(60, 10, null);
+        await controller.ApplyAsync(10, 10, null);
+        await controller.CloseAsync();
+        Equal("10", string.Join(',', device.Writes));
     }),
-    ("WMI matching cannot select another monitor", () =>
+    ("Reopened color device applies retained warmth after delayed capability recovery", async () =>
     {
-        var identity = DisplayIdentity.FromInterfacePath(@"\\?\DISPLAY#BOE1234#5&ABC&0&UID1#{guid}");
-        Equal(@"DISPLAY\BOE1234\5&ABC&0&UID1", identity!);
-        Check(DisplayIdentity.MatchesWmi(identity!, identity + "_0"));
-        Check(!DisplayIdentity.MatchesWmi(identity!, identity + "2_0"));
-        Check(!DisplayIdentity.MatchesWmi(identity!, @"DISPLAY\AOC1234\5&ABC&0&UID1_0"));
-        Check(DisplayIdentity.FromInterfacePath("unknown") == null);
-        return Task.CompletedTask;
+        var first = new FakeColorDevice();
+        var controller = new ControlledDisplay(first);
+        await controller.ApplyAsync(60, 60, 3200);
+        await controller.CloseAsync();
+        Equal("100,100,100", string.Join(',', first.Gains));
+
+        var reopened = new FakeColorDevice { FailFirstRead = true };
+        var recovered = new ControlledDisplay(reopened);
+        try
+        {
+            Check(!recovered.SupportsColor);
+            await recovered.ApplyAsync(60, 60, 3200);
+            await reopened.Applied.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Equal("100,76,44", string.Join(',', reopened.Gains));
+            Check(recovered.SupportsColor);
+        }
+        finally { await recovered.CloseAsync(); }
+        Equal("100,100,100", string.Join(',', reopened.Gains));
+        Check(reopened.Disposed);
     }),
+    ("Legacy migration preserves compatible settings and runs only once", () => WithSettingsDirectory(directory =>
+    {
+        var path = Path.Combine(directory, "settings.json");
+        const string original = "{\"LaunchOnStartup\":true,\"DelaySeconds\":42,\"HardwareDimLevel\":17,\"DimmingMode\":\"OverlayOnly\"}";
+        File.WriteAllText(path, original);
+        var store = new ControlSettingsStore(directory);
+        var settings = store.Load();
+        Check(settings.LaunchOnStartup);
+        Equal(42, settings.FocusDelaySeconds);
+        Equal(17, settings.FocusBrightness);
+        Check(!settings.FocusEnabled);
+        Equal(original, File.ReadAllText(path));
+        Equal(original, File.ReadAllText(path + ".pre-center.bak"));
+        settings.LaunchOnStartup = false;
+        settings.FocusDelaySeconds = 90;
+        store.Save(settings);
+        var reloaded = store.Load();
+        Check(!reloaded.LaunchOnStartup);
+        Equal(90, reloaded.FocusDelaySeconds);
+        Equal(original, File.ReadAllText(path + ".pre-center.bak"));
+    })),
+    ("Invalid legacy settings are preserved without creating replacement settings", () => WithSettingsDirectory(directory =>
+    {
+        var path = Path.Combine(directory, "settings.json");
+        File.WriteAllText(path, "broken-json");
+        try { new ControlSettingsStore(directory).Load(); throw new Exception("Expected migration error."); }
+        catch (System.Text.Json.JsonException) { }
+        Equal("broken-json", File.ReadAllText(path));
+        Check(!File.Exists(Path.Combine(directory, "control-center.json")));
+    })),
     ("Closing untouched device never changes brightness", async () =>
     {
         var device = new FakeDevice();
@@ -312,8 +458,12 @@ class FakeDevice : IBrightnessDevice
 sealed class FakeColorDevice : FakeDevice, IColorDevice
 {
     public int GainWrites;
+    public bool FailFirstRead;
+    private int _reads;
     public uint[] Gains = { 100, 100, 100 };
-    public uint[]? ReadGains() => Gains.ToArray();
-    public void SetGains(uint[] values) { GainWrites++; Gains = values.ToArray(); }
+    public readonly TaskCompletionSource Applied = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public uint[]? ReadGains() => ++_reads == 1 && FailFirstRead ? null : Gains.ToArray();
+    public void SetGains(uint[] values) { GainWrites++; Gains = values.ToArray(); Applied.TrySetResult(); }
     public void RestoreGains(uint[] values) => Gains = values.ToArray();
 }

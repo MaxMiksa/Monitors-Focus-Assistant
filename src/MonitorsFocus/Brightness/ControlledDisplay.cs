@@ -5,14 +5,16 @@ namespace MonitorsFocus.Brightness;
 internal sealed class ControlledDisplay
 {
     private readonly IBrightnessDevice _device;
-    private readonly uint[]? _originalGains;
+    private volatile uint[]? _originalGains;
     private readonly object _gate = new();
     private Task _worker = Task.CompletedTask;
     private (int Normal, int Effective, int? Kelvin)? _pending;
+    private bool _probeRequested;
     private int _lastBrightness;
     private int _normalBrightness;
     private int? _lastKelvin;
     private (uint Red, uint Green, uint Blue)? _lastGains;
+    private int? _requestedKelvin;
     private bool _temporaryBrightness;
     private bool _colorOwned;
     private bool _running;
@@ -25,12 +27,39 @@ internal sealed class ControlledDisplay
     {
         _device = device;
         _normalBrightness = _lastBrightness = device.ReadBrightness();
-        if (device is IColorDevice ddc) _originalGains = ddc.ReadGains();
+        if (device is IColorDevice color) _originalGains = color.ReadGains();
+        if (device is IColorDevice && _originalGains == null) StartColorRecovery();
     }
 
     public int InitialBrightness => _normalBrightness;
     public bool SupportsColor => _originalGains != null;
     public string? Error { get { lock (_gate) return _error; } }
+
+    // The first gain read on a fresh DDC channel is unreliable on some monitors. Instead of
+    // declaring hardware color unsupported for the whole session, keep probing in the background;
+    // probes go through the same serialized worker so no two device commands overlap.
+    private void StartColorRecovery()
+    {
+        _ = Task.Run(async () =>
+        {
+            for (var attempt = 0; attempt < 5; attempt++)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(attempt == 0 ? 2 : 6)).ConfigureAwait(false);
+                lock (_gate) { if (_closed || _failed || _originalGains != null) return; }
+                RequestProbe();
+            }
+        });
+    }
+
+    private void RequestProbe()
+    {
+        lock (_gate)
+        {
+            if (_closed || _failed || _originalGains != null) return;
+            _probeRequested = true;
+            if (!_running) { _running = true; _worker = Task.Run(ProcessAsync); }
+        }
+    }
 
     public Task ApplyAsync(int normal, int effective, int? kelvin)
     {
@@ -48,13 +77,16 @@ internal sealed class ControlledDisplay
         while (true)
         {
             (int Normal, int Effective, int? Kelvin) target;
+            bool probe;
             lock (_gate)
             {
-                if (!_pending.HasValue) { _running = false; return; }
-                target = _pending.Value;
+                if (!_pending.HasValue && !_probeRequested) { _running = false; return; }
+                probe = _probeRequested;
+                _probeRequested = false;
+                target = _pending ?? (_normalBrightness, _lastBrightness, _requestedKelvin);
                 _pending = null;
             }
-            var operation = Task.Run(() => Apply(target));
+            var operation = Task.Run(() => Apply(target, probe));
             try
             {
                 await operation.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
@@ -71,27 +103,31 @@ internal sealed class ControlledDisplay
         }
     }
 
-    private void Apply((int Normal, int Effective, int? Kelvin) target)
+    private void Apply((int Normal, int Effective, int? Kelvin) target, bool probe)
     {
+        _requestedKelvin = target.Kelvin;
+        if (probe && _originalGains == null && _device is IColorDevice probeTarget &&
+            probeTarget.ReadGains() is { } gains)
+            _originalGains = gains;
         _normalBrightness = target.Normal;
         if (_lastBrightness != target.Effective)
         {
             _temporaryBrightness |= target.Effective != target.Normal;
             _device.SetBrightness(target.Effective);
             _lastBrightness = target.Effective;
-            _temporaryBrightness = target.Effective != target.Normal;
         }
-        if (_device is not IColorDevice ddc || _originalGains == null) return;
+        _temporaryBrightness = target.Effective != target.Normal;
+        if (_device is not IColorDevice ddc || _originalGains is not { } baseline) return;
         if (!target.Kelvin.HasValue)
         {
-            if (_colorOwned) ddc.RestoreGains(_originalGains);
+            if (_colorOwned) ddc.RestoreGains(baseline);
             _colorOwned = false;
             _lastKelvin = null;
             _lastGains = null;
         }
         else if (_lastKelvin != target.Kelvin)
         {
-            var warmGains = WarmGains(_originalGains, target.Kelvin.Value);
+            var warmGains = WarmGains(baseline, target.Kelvin.Value);
             if (_lastGains != warmGains)
             {
                 _colorOwned = true;
@@ -125,9 +161,9 @@ internal sealed class ControlledDisplay
         catch (Exception ex) { failure = ex; }
         try
         {
-            if (_colorOwned && _device is IColorDevice ddc && _originalGains != null)
+            if (_colorOwned && _device is IColorDevice ddc && _originalGains is { } baseline)
             {
-                ddc.RestoreGains(_originalGains);
+                ddc.RestoreGains(baseline);
                 _colorOwned = false;
                 _lastKelvin = null;
                 _lastGains = null;

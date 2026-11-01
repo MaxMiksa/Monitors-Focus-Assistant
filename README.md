@@ -30,10 +30,11 @@ Monitors Focus puts it in one window: a slider per display that writes the actua
 | --- | --- |
 | Per-display brightness | Independent slider per display, written straight to the backlight; DDC/CI for external, WMI for internal |
 | Ratio binding | Set a baseline per display, then move both together at their original ratio; weights survive a zero |
-| Hardware color | Writes DDC/CI RGB gain (VCP `0x16` / `0x18` / `0x1A`) with one-click restore; external panels only |
+| Hardware color | Writes DDC/CI RGB gain (VCP `0x16` / `0x18` / `0x1A`) with one-click restore; external panels only. Reports an error if the color preset cannot be read before adjustment |
 | Daily schedule | Development build eases in and out after each node; new nodes default to 30 minutes and can span hours. Continuous across midnight; manual adjustments apply immediately until the next node |
 | Scenes | Store per-display brightness and color targets. The development build also stores ratio binding, focus enablement and selected secondary displays; manual switches and schedule nodes apply the same rules, keeping the primary display bright |
-| Focus | Dims to a target level after idle time; pause from the panel or tray, or hand control back to the schedule |
+| Focus | Dims a secondary display after the pointer leaves; pause from the panel or tray. The development build adds an option to restore and retain normal brightness while a full-screen or maximized window is on that display, even when focus returns to the primary |
+| Languages | Development build offers Simplified Chinese, English and system default in Settings → General. Preview instantly, then save to remember the choice and update the tray; user scene names stay intact |
 | Launch on startup | One `MonitorsFocus` registry entry pointing at the self-contained core; old entries cleaned up |
 | On-demand panel | Closing the panel ends only the UI process; the core keeps scheduling and restores dimming and color before it exits |
 
@@ -59,14 +60,15 @@ The package bundles the .NET runtime. You only need Microsoft Edge WebView2 Runt
 | --- | --- |
 | Type check, production build, Oxlint | Pass, 0 warnings 0 errors |
 | Solution Release build | Pass, 0 warnings 0 errors |
-| Fake-device lifecycle checks (7) | All pass |
+| Automated checks, including feature interactions, recovery, migration, window detection and long fades | 35 pass |
 | Dual-display brightness reads | Verified on real hardware |
 | External color write and restore | Verified on AOC U27G4 |
+| Full-screen or maximized keep-awake option (development build) | Native dual-display detection, simulated brightness recovery and settings interaction verified; real hardware integration pending |
 | Ratio binding on real hardware | Pending |
 | Long fades and memory (development build) | Six-hour overnight fade, 72-hour per-second simulation and slow-device request coalescing pass; plan evaluation allocates 0 bytes. Sustained real-device experience pending |
 | Resume and hot-plug reconnection, sustained mixed DPI | Pending |
 
-The development build removes all application hotkeys in both modes; saved hotkey fields are ignored and omitted on the next legacy settings save. Scene hotkeys are no longer planned.
+The integrated development version covers the new settings in both languages and checks scene, schedule, focus and persistence interactions. Fixes address offline ratio limits, scene rules replaying on unrelated saves, manual-to-schedule jumps and long scene names. Scenes can restore native color and be deleted when not referenced by a schedule. See [integration acceptance](docs/integration-acceptance.md). A separate self-contained package has been built; the running installation and remote download remain unchanged.
 
 Unverified items stay marked pending. A clean build is not treated as acceptance.
 
@@ -82,7 +84,7 @@ Unverified items stay marked pending. A clean build is not treated as acceptance
 
 ## Upgrading from v1.0.0
 
-Quit the old tray process first, or the single-instance lock will block the new core. Existing settings migrate on first start. Starting without `--center` still enters the v1 mouse-follow overlay mode; that path is kept working but frozen.
+Quit the old tray process first, or the single-instance lock will block the new core. First start backs up `settings.json` to `settings.json.pre-center.bak` and migrates login startup, focus delay and hardware dim level; the development build also inherits the saved language preference. Focus stays off until enabled in the new panel; legacy screen selection and overlay settings remain in the old file for compatibility mode. The development build removes all application hotkeys in both modes; saved hotkey fields are ignored and omitted on the next legacy settings save. Scene hotkeys are no longer planned. Migration never replaces an existing control-center configuration. Starting without `--center` still enters the v1 mouse-follow overlay mode; that path is kept working but frozen.
 
 ## Building
 

@@ -7,4 +7,7 @@
     <FileVersion>2.0.0.0</FileVersion>
     <AssemblyVersion>2.0.0.0</AssemblyVersion>
   </PropertyGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="strings.json" />
+  </ItemGroup>
 </Project>

@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Windows.Forms;
 using MonitorsFocus.Brightness;
+using MonitorsFocus.Core;
 using MonitorsFocus.Monitoring;
 using MonitorsFocus.Overlay;
 using MonitorsFocus.Settings;
@@ -25,6 +26,7 @@ internal sealed class MainAppContext : ApplicationContext
     private bool _paused;
     private bool _exiting;
     private int _hardwareRefresh;
+    private string T(string key) => Localization.Text(key, _settings.Language.Preference());
 
     public MainAppContext()
     {
@@ -51,9 +53,9 @@ internal sealed class MainAppContext : ApplicationContext
         _pauseMenuItem.Click += (_, _) => TogglePaused();
         UpdatePauseMenuText();
 
-        var settingsItem = new ToolStripMenuItem("Settings...");
+        var settingsItem = new ToolStripMenuItem(T("设置…"));
         settingsItem.Click += (_, _) => OpenSettings();
-        var exitItem = new ToolStripMenuItem("Exit");
+        var exitItem = new ToolStripMenuItem(T("退出"));
         exitItem.Click += (_, _) => ExitThread();
 
         var contextMenu = new ContextMenuStrip();
@@ -61,6 +63,7 @@ internal sealed class MainAppContext : ApplicationContext
         contextMenu.Items.Add(_pauseMenuItem);
         contextMenu.Items.Add(new ToolStripSeparator());
         contextMenu.Items.Add(exitItem);
+        contextMenu.Opening += (_, _) => { settingsItem.Text = T("设置…"); exitItem.Text = T("退出"); UpdatePauseMenuText(); };
 
         _trayIcon = new NotifyIcon
         {
@@ -165,7 +168,7 @@ internal sealed class MainAppContext : ApplicationContext
 
     private void UpdatePauseMenuText()
     {
-        _pauseMenuItem.Text = _paused ? "Resume" : "Pause";
+        _pauseMenuItem.Text = _paused ? T("恢复") : T("暂停");
     }
 
     private void OpenSettings()
@@ -188,7 +191,7 @@ internal sealed class MainAppContext : ApplicationContext
         catch (Exception ex)
         {
             MessageBox.Show(
-                $"Failed to save settings: {ex.Message}",
+                Localization.Format("保存设置失败：{0}", _settings.Language.Preference(), Localization.Message(ex.Message, _settings.Language.Preference())),
                 "Monitors Focus",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
@@ -229,7 +232,7 @@ internal sealed class MainAppContext : ApplicationContext
         {
             LogSink.Info($"Hardware refresh failed: {ex.Message}");
             if (!_exiting)
-                MessageBox.Show($"Hardware refresh failed: {ex.Message}", "Monitors Focus",
+                MessageBox.Show(Localization.Format("硬件刷新失败：{0}", _settings.Language.Preference(), Localization.Message(ex.Message, _settings.Language.Preference())), "Monitors Focus",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
@@ -243,11 +246,11 @@ internal sealed class MainAppContext : ApplicationContext
         _monitorManager.MonitorsChanged -= OnMonitorsChanged;
         _monitorManager.Dispose();
         _overlayManager.Dispose();
-        _trayIcon.Text = "Monitors Focus - restoring displays";
+        _trayIcon.Text = T("Monitors Focus - 正在恢复显示器");
         try { await _hardwareDimmer.ShutdownAsync(); }
         catch (Exception ex)
         {
-            MessageBox.Show($"Display restore failed: {ex.Message}", "Monitors Focus",
+            MessageBox.Show(Localization.Format("显示器恢复失败：{0}", _settings.Language.Preference(), Localization.Message(ex.Message, _settings.Language.Preference())), "Monitors Focus",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         _trayIcon.Visible = false;

@@ -13,7 +13,7 @@ internal sealed class AppSettings
     public int HardwareDimLevel { get; set; } = 10;
     public List<string> HardwareDimDisabledMonitorIds { get; set; } = new();
     public DimmingMode DimmingMode { get; set; } = DimmingMode.AutoPreferHardware;
-    public UiLanguage Language { get; set; } = UiLanguage.English;
+    public UiLanguage Language { get; set; } = UiLanguage.System;
     public int LastWindowWidth { get; set; } = 1400;
     public int LastWindowHeight { get; set; } = 1000;
 
@@ -57,5 +57,14 @@ internal enum DimmingMode
 internal enum UiLanguage
 {
     English,
-    Chinese
+    Chinese,
+    System
+}
+
+internal static class UiLanguageExtensions
+{
+    public static string Preference(this UiLanguage language) => language switch
+    {
+        UiLanguage.Chinese => "zh-CN", UiLanguage.English => "en", _ => "system"
+    };
 }

@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using MonitorsFocus.Brightness;
+using MonitorsFocus.Core;
 using MonitorsFocus.Monitoring;
 using MonitorsFocus.Settings;
 
@@ -31,8 +32,8 @@ internal sealed class SettingsForm : Form
     private readonly Button _cancelButton;
     private bool _applyingLanguage;
     private readonly Dictionary<string, Label> _labels = new();
-    private readonly Dictionary<string, string> _translationsEn = new();
-    private readonly Dictionary<string, string> _translationsZh = new();
+    private readonly IReadOnlyList<MonitorInfo> _monitors;
+    private string T(string key) => Localization.Text(key, _settings.Language.Preference());
     private readonly Dictionary<int, string> _monitorIdByIndex = new();
     private readonly Dictionary<int, string> _hardwareOverrideIdByIndex = new();
     private readonly IReadOnlyDictionary<string, MonitorsFocus.Brightness.HardwareDimmer.Capability> _capabilities;
@@ -40,6 +41,7 @@ internal sealed class SettingsForm : Form
     public SettingsForm(AppSettings settings, IReadOnlyList<MonitorInfo> monitors, IReadOnlyDictionary<string, HardwareDimmer.Capability> capabilities)
     {
         _settings = settings.Clone();
+        _monitors = monitors;
         _capabilities = capabilities;
         Text = "Monitors Focus Settings";
         StartPosition = FormStartPosition.CenterScreen;
@@ -187,7 +189,7 @@ internal sealed class SettingsForm : Form
             MinimumSize = new Size(140, 32),
             AutoSize = true
         };
-        _rescanButton.Click += (_, _) => MessageBox.Show(this, "Hardware dimming will rescan after saving settings.", "Monitors Focus", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        _rescanButton.Click += (_, _) => MessageBox.Show(this, T("保存设置后将重新检测硬件调光。"), "Monitors Focus", MessageBoxButtons.OK, MessageBoxIcon.Information);
         AddRow(layout, "rescan", string.Empty, _rescanButton);
 
         _hardwareNote = new Label
@@ -246,7 +248,7 @@ internal sealed class SettingsForm : Form
         for (var i = 0; i < monitors.Count; i++)
         {
             var monitor = monitors[i];
-            var label = monitor.IsPrimary ? $"{monitor.Id} (Primary)" : monitor.Id;
+            var label = MonitorLabel(monitor.Id);
             var index = _monitorList.Items.Add(label);
             _monitorIdByIndex[index] = monitor.Id;
 
@@ -273,7 +275,7 @@ internal sealed class SettingsForm : Form
         }
         if (selectedIds.Count == 0)
         {
-            MessageBox.Show(this, "Select at least one monitor.", "Monitors Focus", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, T("请至少选择一块显示器。"), "Monitors Focus", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             DialogResult = DialogResult.None;
             return;
         }
@@ -335,6 +337,7 @@ internal sealed class SettingsForm : Form
     private void PopulateLanguageOptions()
     {
         _languageCombo.Items.Clear();
+        _languageCombo.Items.Add(new Option<UiLanguage>(UiLanguage.System, T("跟随系统")));
         _languageCombo.Items.Add(new Option<UiLanguage>(UiLanguage.English, "English"));
         _languageCombo.Items.Add(new Option<UiLanguage>(UiLanguage.Chinese, "中文"));
         var selected = _languageCombo.Items.Cast<Option<UiLanguage>>().FirstOrDefault(o => o.Value == _settings.Language);
@@ -352,30 +355,20 @@ internal sealed class SettingsForm : Form
 
     private void PopulateDimmingModeOptions()
     {
+        var current = _dimmingModeCombo.SelectedItem is Option<DimmingMode> option ? option.Value : _settings.DimmingMode;
         _dimmingModeCombo.Items.Clear();
-        var lang = GetSelectedLanguage();
-        string Text(DimmingMode mode) => lang switch
+        string Text(DimmingMode mode) => T(mode switch
         {
-            UiLanguage.Chinese => mode switch
-            {
-                DimmingMode.AutoPreferHardware => "自动（优先硬件）",
-                DimmingMode.OverlayOnly => "仅遮罩",
-                DimmingMode.HardwareOnly => "仅硬件",
-                _ => mode.ToString()
-            },
-            _ => mode switch
-            {
-                DimmingMode.AutoPreferHardware => "Auto (prefer hardware)",
-                DimmingMode.OverlayOnly => "Overlay only",
-                DimmingMode.HardwareOnly => "Hardware only",
-                _ => mode.ToString()
-            }
-        };
+            DimmingMode.AutoPreferHardware => "自动（优先硬件）",
+            DimmingMode.OverlayOnly => "仅遮罩",
+            DimmingMode.HardwareOnly => "仅硬件",
+            _ => mode.ToString()
+        });
 
         _dimmingModeCombo.Items.Add(new Option<DimmingMode>(DimmingMode.AutoPreferHardware, Text(DimmingMode.AutoPreferHardware)));
         _dimmingModeCombo.Items.Add(new Option<DimmingMode>(DimmingMode.OverlayOnly, Text(DimmingMode.OverlayOnly)));
         _dimmingModeCombo.Items.Add(new Option<DimmingMode>(DimmingMode.HardwareOnly, Text(DimmingMode.HardwareOnly)));
-        var selected = _dimmingModeCombo.Items.Cast<Option<DimmingMode>>().FirstOrDefault(o => o.Value == _settings.DimmingMode);
+        var selected = _dimmingModeCombo.Items.Cast<Option<DimmingMode>>().FirstOrDefault(o => o.Value == current);
         _dimmingModeCombo.SelectedItem = selected ?? _dimmingModeCombo.Items[0];
     }
 
@@ -386,9 +379,8 @@ internal sealed class SettingsForm : Form
             return;
         }
         _applyingLanguage = true;
-        EnsureTranslations();
         _settings.Language = lang;
-        var t = lang == UiLanguage.Chinese ? _translationsZh : _translationsEn;
+        var t = TextKeys.ToDictionary(x => x.Key, x => T(x.Value));
         Text = t["title"];
         foreach (var kv in _labels)
         {
@@ -427,54 +419,37 @@ internal sealed class SettingsForm : Form
         _hardwareStatusList.Columns[0].Text = t["colMonitor"];
         _hardwareStatusList.Columns[1].Text = t["colStatus"];
         _hardwareStatusList.Columns[2].Text = t["colMessage"];
+        foreach (var (index, id) in _monitorIdByIndex)
+            _monitorList.Items[index] = MonitorLabel(id);
+        foreach (var (index, id) in _hardwareOverrideIdByIndex)
+            _hardwareDimOverrideList.Items[index] = MonitorLabel(id);
+        PopulateHardwareStatus(_monitors);
         _applyingLanguage = false;
     }
 
-    private void EnsureTranslations()
+    private static readonly Dictionary<string, string> TextKeys = new()
     {
-        if (_translationsEn.Count > 0) return;
-        _translationsEn["title"] = "Monitors Focus Settings";
-        _translationsEn["delay"] = "Delay (seconds):";
-        _translationsEn["opacity"] = "Overlay opacity:";
-        _translationsEn["monitors"] = "Controlled monitors:";
-        _translationsEn["startup"] = "Startup:";
-        _translationsEn["language"] = "Language:";
-        _translationsEn["dimmingMode"] = "Dimming mode:";
-        _translationsEn["hardwareDimming"] = "Hardware dimming:";
-        _translationsEn["hardwareDisable"] = "Disable hardware dimming on:";
-        _translationsEn["hardwareDiagnostics"] = "Hardware diagnostics:";
-        _translationsEn["note"] = "Note:";
-        _translationsEn["hardwareNote"] = "Hardware dimming uses DDC/CI or WMI to reduce backlight on supported displays. Benefits: lowers backlight load and heat; if unsupported, overlay is used.";
-        _translationsEn["hardwareDimCheck"] = "Enable hardware dimming (DDC/CI)";
-        _translationsEn["startupCheck"] = "Launch on startup";
-        _translationsEn["rescanBtn"] = "Rescan (applies on save)";
-        _translationsEn["saveBtn"] = "Save";
-        _translationsEn["cancelBtn"] = "Cancel";
-        _translationsEn["colMonitor"] = "Monitor";
-        _translationsEn["colStatus"] = "Status";
-        _translationsEn["colMessage"] = "Message";
-
-        _translationsZh["title"] = "Monitors Focus 设置";
-        _translationsZh["delay"] = "延迟（秒）：";
-        _translationsZh["opacity"] = "遮罩透明度：";
-        _translationsZh["monitors"] = "受控显示器：";
-        _translationsZh["startup"] = "开机自启：";
-        _translationsZh["language"] = "语言：";
-        _translationsZh["dimmingMode"] = "调光模式：";
-        _translationsZh["hardwareDimming"] = "硬件调光：";
-        _translationsZh["hardwareDisable"] = "禁用硬件调光的显示器：";
-        _translationsZh["hardwareDiagnostics"] = "硬件诊断：";
-        _translationsZh["note"] = "说明：";
-        _translationsZh["hardwareNote"] = "硬件调光通过 DDC/CI 或 WMI 降低背光，减轻背光负载与热量；若不支持则使用遮罩。";
-        _translationsZh["hardwareDimCheck"] = "启用硬件调光（DDC/CI）";
-        _translationsZh["startupCheck"] = "开机自启";
-        _translationsZh["rescanBtn"] = "重新检测（保存后生效）";
-        _translationsZh["saveBtn"] = "保存";
-        _translationsZh["cancelBtn"] = "取消";
-        _translationsZh["colMonitor"] = "显示器";
-        _translationsZh["colStatus"] = "状态";
-        _translationsZh["colMessage"] = "信息";
-    }
+        ["title"] = "Monitors Focus 设置",
+        ["delay"] = "延迟（秒）：",
+        ["opacity"] = "遮罩透明度：",
+        ["monitors"] = "受控显示器：",
+        ["startup"] = "开机自启：",
+        ["language"] = "语言：",
+        ["dimmingMode"] = "调光模式：",
+        ["hardwareDimming"] = "硬件调光：",
+        ["hardwareDisable"] = "禁用硬件调光的显示器：",
+        ["hardwareDiagnostics"] = "硬件诊断：",
+        ["note"] = "说明：",
+        ["hardwareNote"] = "硬件调光通过 DDC/CI 或 WMI 降低背光，减轻背光负载与热量；若不支持则使用遮罩。",
+        ["hardwareDimCheck"] = "启用硬件调光（DDC/CI）",
+        ["startupCheck"] = "开机自启",
+        ["rescanBtn"] = "重新检测（保存后生效）",
+        ["saveBtn"] = "保存",
+        ["cancelBtn"] = "取消",
+        ["colMonitor"] = "显示器",
+        ["colStatus"] = "状态",
+        ["colMessage"] = "信息",
+    };
 
     private sealed class Option<T>
     {
@@ -496,7 +471,7 @@ internal sealed class SettingsForm : Form
         for (var i = 0; i < monitors.Count; i++)
         {
             var monitor = monitors[i];
-            var label = monitor.IsPrimary ? $"{monitor.Id} (Primary)" : monitor.Id;
+            var label = MonitorLabel(monitor.Id);
             var index = _hardwareDimOverrideList.Items.Add(label);
             _hardwareOverrideIdByIndex[index] = monitor.Id;
 
@@ -505,17 +480,28 @@ internal sealed class SettingsForm : Form
         }
     }
 
+    private string MonitorLabel(string id) => _monitors.Any(m => m.Id == id && m.IsPrimary)
+        ? $"{id} ({T("主显示器")})" : id;
+
     private void PopulateHardwareStatus(IReadOnlyList<MonitorInfo> monitors)
     {
         _hardwareStatusList.Items.Clear();
         foreach (var monitor in monitors)
         {
-            var status = "Unknown";
+            var status = T("未知");
             var message = string.Empty;
             if (_capabilities.TryGetValue(monitor.Id, out var cap))
             {
-                status = cap.Status.ToString();
-                message = cap.Message ?? string.Empty;
+                status = T(cap.Status switch
+                {
+                    HardwareDimmer.DimmingStatus.Detecting => "检测中",
+                    HardwareDimmer.DimmingStatus.Supported => "支持",
+                    HardwareDimmer.DimmingStatus.Unsupported => "不支持",
+                    HardwareDimmer.DimmingStatus.Failed => "失败",
+                    HardwareDimmer.DimmingStatus.DisabledBySettings => "已在设置中禁用",
+                    _ => "未知"
+                });
+                message = Localization.Message(cap.Message, _settings.Language.Preference()) ?? string.Empty;
             }
 
             var item = new ListViewItem(new[] { monitor.Id, status, message });

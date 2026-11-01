@@ -30,6 +30,10 @@ internal sealed class DdcBrightnessDevice : IColorDevice
         {
             if (!NativeMethods.GetMonitorBrightness(handles[0].hPhysicalMonitor, out var min, out _, out var max) || max <= min)
                 return null;
+            // A fresh handle NAKs the first VCP transaction on this monitor (AOC U27G4), which made the
+            // color probe fail at startup. Spend one throwaway read and let the channel settle.
+            NativeMethods.GetVCPFeatureAndVCPFeatureReply(handles[0].hPhysicalMonitor, 0x10, IntPtr.Zero, out _, out _);
+            Thread.Sleep(150);
             var device = new DdcBrightnessDevice(handles, min, max);
             transferred = true;
             return device;
@@ -77,10 +81,16 @@ internal sealed class DdcBrightnessDevice : IColorDevice
     private uint? _originalPreset;
     private bool _presetSwitched;
 
+    private uint? ReadPreset()
+    {
+        uint preset = 0;
+        return Retry(() => NativeMethods.GetVCPFeatureAndVCPFeatureReply(_handles[0].hPhysicalMonitor, ColorPresetCode, IntPtr.Zero, out preset, out _))
+            ? preset : null;
+    }
+
     public uint[]? ReadGains()
     {
-        if (NativeMethods.GetVCPFeatureAndVCPFeatureReply(_handles[0].hPhysicalMonitor, ColorPresetCode, IntPtr.Zero, out var preset, out _))
-            _originalPreset = preset;
+        if (ReadPreset() is { } preset) _originalPreset = preset;
         var values = new uint[3];
         for (var channel = 0; channel < 3; channel++)
             if (!Retry(() => NativeMethods.GetVCPFeatureAndVCPFeatureReply(_handles[0].hPhysicalMonitor, GainCodes[channel], IntPtr.Zero, out values[channel], out _)))
@@ -90,12 +100,20 @@ internal sealed class DdcBrightnessDevice : IColorDevice
 
     public void SetGains(uint[] values)
     {
-        if (!_presetSwitched && _originalPreset is { } preset && preset != UserPreset)
+        // Remember the preset actually in use, not a guessed constant: this model reports the user
+        // mode as 0x01 even though callers ask for 0x0B, and restore must put back what we read.
+        if (!_presetSwitched)
         {
-            if (!Retry(() => NativeMethods.SetVCPFeature(_handles[0].hPhysicalMonitor, ColorPresetCode, UserPreset)))
-                throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot switch monitor color preset.");
-            _presetSwitched = true;
-            Thread.Sleep(100);
+            if (ReadPreset() is not { } current)
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot read monitor color preset.");
+            if (current != UserPreset)
+            {
+                if (!Retry(() => NativeMethods.SetVCPFeature(_handles[0].hPhysicalMonitor, ColorPresetCode, UserPreset)))
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "Cannot switch monitor color preset.");
+                _originalPreset = current;
+                _presetSwitched = true;
+                Thread.Sleep(100);
+            }
         }
         for (var channel = 0; channel < 3; channel++)
             if (!Retry(() => NativeMethods.SetVCPFeature(_handles[0].hPhysicalMonitor, GainCodes[channel], values[channel])))

@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace MonitorsFocus;
 
@@ -18,6 +19,46 @@ internal static class NativeMethods
     internal static readonly IntPtr HWND_TOPMOST = new(-1);
 
     internal const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+
+    internal delegate bool EnumWindowsProc(IntPtr window, IntPtr parameter);
+
+    [DllImport("user32.dll")]
+    internal static extern bool EnumWindows(EnumWindowsProc callback, IntPtr parameter);
+
+    [DllImport("user32.dll")]
+    internal static extern bool IsWindowVisible(IntPtr window);
+
+    [DllImport("user32.dll")]
+    internal static extern bool IsIconic(IntPtr window);
+
+    [DllImport("user32.dll")]
+    internal static extern bool IsZoomed(IntPtr window);
+
+    [DllImport("user32.dll")]
+    internal static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+
+    [DllImport("user32.dll")]
+    internal static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    internal static extern int GetClassName(IntPtr window, StringBuilder name, int capacity);
+
+    [DllImport("user32.dll")]
+    internal static extern bool GetWindowRect(IntPtr window, out RECT bounds);
+
+    [DllImport("dwmapi.dll")]
+    internal static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out RECT value, int size);
+
+    [DllImport("dwmapi.dll")]
+    internal static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
+
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct RECT
+    {
+        public int Left, Top, Right, Bottom;
+        public readonly System.Drawing.Rectangle ToRectangle() =>
+            System.Drawing.Rectangle.FromLTRB(Left, Top, Right, Bottom);
+    }
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern bool SetWindowPos(

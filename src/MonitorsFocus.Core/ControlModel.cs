@@ -3,17 +3,19 @@ namespace MonitorsFocus.Core;
 public sealed record DisplayState(string Id, string Name, int Brightness, bool CanAdjust,
     bool CanAdjustColor, int? Kelvin, string? Error, bool IsPrimary);
 public sealed record ControlSnapshot(List<DisplayState> Displays, ControlSettings Settings,
-    bool FocusPaused, string Source, string? Error = null, string? Warning = null);
+    bool FocusPaused, string Source, string? Error = null, string? Warning = null, string? SystemLanguage = null);
 public sealed record ControlRequest(string Action, string? Id = null, int? Value = null, ControlSettings? Settings = null);
 
 public sealed class ControlSettings
 {
     public int SchemaVersion { get; set; } = 1;
     public long Revision { get; set; }
+    public string Language { get; set; } = "system";
     public bool Linked { get; set; }
     public Dictionary<string, double> LinkWeights { get; set; } = new();
     public bool FocusEnabled { get; set; }
     public List<string>? ControlledDisplayIds { get; set; }
+    public bool KeepSecondaryAwakeOnFullscreen { get; set; } = true;
     public int FocusDelaySeconds { get; set; } = 180;
     public int FocusBrightness { get; set; } = 10;
     public bool ScheduleEnabled { get; set; }
@@ -26,6 +28,7 @@ public sealed class Scene
 {
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public string Name { get; set; } = "新场景";
+    public string? DefaultName { get; set; }
     public Dictionary<string, DisplayTarget> Targets { get; set; } = new();
     public SceneBehavior? Behavior { get; set; }
 }
@@ -64,6 +67,14 @@ public sealed record PlanPoint(int MinuteOfDay, string SceneId, int TransitionMi
 
 public static class RatioBinding
 {
+    public static Dictionary<string, int> CalculateAvailable(IReadOnlyDictionary<string, double> weights,
+        IEnumerable<string> available, string anchor, int value)
+    {
+        var active = available.Where(weights.ContainsKey).ToDictionary(id => id, id => weights[id]);
+        return active.ContainsKey(anchor) ? Calculate(active, anchor, value)
+            : new Dictionary<string, int> { [anchor] = Math.Clamp(value, 0, 100) };
+    }
+
     public static Dictionary<string, int> Calculate(IReadOnlyDictionary<string, double> weights, string anchor, int value)
     {
         if (!weights.TryGetValue(anchor, out var weight) || weight <= 0 || weights.Values.Any(x => x <= 0 || !double.IsFinite(x)))
@@ -75,12 +86,13 @@ public static class RatioBinding
 
 public readonly record struct PlanResult(DateTime StartsAt, DateTime NextAt, Scene Scene, Scene Prior, double Progress)
 {
-    public bool TryGetTarget(string id, out int brightness, out int? kelvin)
+    public bool TryGetTarget(string id, out int brightness, out int? kelvin,
+        IReadOnlyDictionary<string, DisplayTarget>? origins = null)
     {
         brightness = 0;
         kelvin = null;
         if (!Scene.Targets.TryGetValue(id, out var target)) return false;
-        var from = Prior.Targets.GetValueOrDefault(id, target);
+        var from = origins?.GetValueOrDefault(id) ?? Prior.Targets.GetValueOrDefault(id, target);
         brightness = (int)Math.Round(from.Brightness + (target.Brightness - from.Brightness) * Progress);
         // Native white is the baseline of our hardware warmth approximation. Restore the
         // actual original preset at a native endpoint, rather than retaining a 6500 K override.
@@ -94,9 +106,31 @@ public readonly record struct PlanResult(DateTime StartsAt, DateTime NextAt, Sce
 
 public static class DailyPlan
 {
+    public static bool HasSameDefinition(ControlSettings first, ControlSettings second)
+    {
+        if (first.ScheduleEnabled != second.ScheduleEnabled ||
+            !first.Schedule.OrderBy(p => p.MinuteOfDay).SequenceEqual(second.Schedule.OrderBy(p => p.MinuteOfDay))) return false;
+        foreach (var id in first.Schedule.Select(p => p.SceneId).Distinct())
+        {
+            var a = first.Scenes.FirstOrDefault(s => s.Id == id);
+            var b = second.Scenes.FirstOrDefault(s => s.Id == id);
+            if (a == null || b == null || a.Targets.Count != b.Targets.Count ||
+                a.Targets.Any(p => !b.Targets.TryGetValue(p.Key, out var value) || p.Value != value)) return false;
+            var left = a.Behavior ?? SceneBehavior.Capture(first);
+            var right = b.Behavior ?? SceneBehavior.Capture(second);
+            if (left.Linked != right.Linked || left.FocusEnabled != right.FocusEnabled ||
+                left.LinkWeights.Count != right.LinkWeights.Count ||
+                left.LinkWeights.Any(p => !right.LinkWeights.TryGetValue(p.Key, out var value) || p.Value != value) ||
+                (left.ControlledDisplayIds == null ? right.ControlledDisplayIds != null :
+                    right.ControlledDisplayIds == null || !left.ControlledDisplayIds.ToHashSet().SetEquals(right.ControlledDisplayIds))) return false;
+        }
+        return true;
+    }
+
     public static void Validate(ControlSettings settings)
     {
         if (settings.SchemaVersion != 1) throw new ArgumentException("配置版本不受支持。");
+        if (settings.Language is not ("system" or "zh-CN" or "en")) throw new ArgumentException("不支持的语言设置。");
         if (settings.FocusDelaySeconds is < 0 or > 600 || settings.FocusBrightness is < 0 or > 100)
             throw new ArgumentException("专注参数超出范围。");
         ValidateBinding(settings.Linked, settings.LinkWeights);
